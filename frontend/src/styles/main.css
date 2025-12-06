@@ -885,56 +885,41 @@ main {
 /* Category selector for Node Properties */
 .category-selector {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   gap: 0.5rem;
+  align-items: center;
 }
 
 .existing-categories {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+  display: contents;
 }
 
 .category-option {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  padding: .35rem .75rem;
+  justify-content: center;
+  padding: 2px;
   border: 2px solid var(--border);
   border-radius: 6px;
   cursor: pointer;
-  font-size: 0.875rem;
   background: var(--surface);
   transition: all 0.15s;
 }
 
 .category-option:hover {
   border-color: var(--primary);
-  background: var(--background);
 }
 
 .category-option.selected {
   border-color: var(--primary);
-  background: var(--primary-light, rgba(59, 130, 246, 0.1));
+  box-shadow: 0 0 0 2px var(--primary-light, rgba(59, 130, 246, 0.3));
 }
 
 .category-color-swatch {
-  width: 16px;
-  height: 16px;
-  border-radius: 3px;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
   flex-shrink: 0;
-}
-
-.category-label {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100px;
-}
-
-.new-category-row {
-  display: flex;
-  align-items: center;
 }
 
 .new-category-option {
@@ -942,12 +927,13 @@ main {
 }
 
 .new-category-option .category-color-picker {
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   border: none;
   padding: 0;
   cursor: pointer;
   background: transparent;
+  border-radius: 4px;
 }
 
 .text-style-controls {
@@ -1164,6 +1150,26 @@ main {
   gap: 0.375rem;
   flex-wrap: wrap;
   margin-top: 0.5rem;
+}
+
+.reference-category {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.category-color-block {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.category-name {
+  font-weight: 500;
 }
 
 .tag {

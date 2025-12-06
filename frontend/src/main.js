@@ -1431,8 +1431,7 @@ function populateExistingCategories(currentColor) {
     option.dataset.color = color;
 
     option.innerHTML = `
-      <span class="category-color-swatch" style="background-color: ${color}"></span>
-      <span class="category-label">${label}</span>
+      <span class="category-color-swatch" style="background-color: ${color}" title="${label}"></span>
     `;
 
     option.addEventListener('click', () => selectCategory(color));
@@ -1887,8 +1886,16 @@ function renderReferencesList() {
   if (totalRefs === 0) {
     container.innerHTML = '<p>No references found. Try adjusting your filters or import BibTeX to get started!</p>';
   } else {
-    container.innerHTML = pageRefs.map(ref => `
+    container.innerHTML = pageRefs.map(ref => {
+      const categoryLabel = ref.legend_category ? getLegendLabelByColor(ref.legend_category) : null;
+      return `
       <article class="reference-card" role="listitem" data-id="${ref.id}">
+        ${ref.legend_category ? `
+          <div class="reference-category" title="${escapeHtml(categoryLabel || 'Category')}">
+            <span class="category-color-block" style="background-color: ${ref.legend_category}"></span>
+            <span class="category-name">${escapeHtml(categoryLabel || 'Category')}</span>
+          </div>
+        ` : ''}
         <h3>${escapeHtml(ref.title || ref.bibtex_key)}</h3>
         <p class="authors">${escapeHtml(ref.author || 'Unknown author')}</p>
         <p class="meta">
@@ -1902,7 +1909,7 @@ function renderReferencesList() {
           `).join('') || ''}
         </div>
       </article>
-    `).join('');
+    `}).join('');
 
     // Click handlers
     container.querySelectorAll('.reference-card').forEach(card => {
