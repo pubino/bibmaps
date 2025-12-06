@@ -38,23 +38,44 @@ let filteredTaxonomies = [];
 let taxNameFilter = '';
 let taxSortBy = 'created-desc';
 
+// Media pagination and filter state
+let allMedia = [];
+let filteredMedia = [];
+let mediaCurrentPage = 1;
+let mediaPageSize = 20;
+let mediaTitleFilter = '';
+let mediaTaxonomyFilter = '';
+let mediaSortBy = 'created-desc';
+let currentMediaId = null;
+let editingMediaId = null;
+let mediaSelectedTags = [];
+
 // Confirmation modal resolver
 let confirmResolver = null;
+
+// Current user state
+let currentUser = null;
 
 // DOM Elements
 const sections = {
   bibmaps: document.getElementById('bibmaps-section'),
   editor: document.getElementById('editor-section'),
   references: document.getElementById('references-section'),
+  media: document.getElementById('media-section'),
   taxonomies: document.getElementById('taxonomies-section'),
   nodeRefs: document.getElementById('node-refs-section'),
+  settings: document.getElementById('settings-section'),
+  admin: document.getElementById('admin-section'),
   about: document.getElementById('about-section')
 };
 
 const navButtons = {
   bibmaps: document.getElementById('nav-bibmaps'),
   references: document.getElementById('nav-references'),
+  media: document.getElementById('nav-media'),
   taxonomies: document.getElementById('nav-taxonomies'),
+  settings: document.getElementById('nav-settings'),
+  admin: document.getElementById('nav-admin'),
   about: document.getElementById('nav-about')
 };
 
@@ -104,6 +125,9 @@ function closeAllModals() {
   }
 }
 
+// Alias for consistency
+const closeModal = closeAllModals;
+
 function showConfirm(message, title = 'Confirm', actionLabel = 'Delete') {
   return new Promise((resolve) => {
     confirmResolver = resolve;
@@ -122,14 +146,478 @@ function formatDate(dateStr) {
 async function loadUserInfo() {
   try {
     const user = await api.user();
-    const userInfo = document.getElementById('user-info');
-    if (user.authenticated) {
-      userInfo.textContent = `Signed in as ${user.user_name || 'User'}`;
-    } else {
-      userInfo.textContent = 'Not signed in (local mode)';
-    }
+    currentUser = user.authenticated ? user : null;
+    updateAuthUI();
   } catch (err) {
     console.error('Failed to load user:', err);
+    currentUser = null;
+    updateAuthUI();
+  }
+}
+
+// Update UI based on auth state
+function updateAuthUI() {
+  const userInfo = document.getElementById('user-info');
+  const authToggleBtn = document.getElementById('auth-toggle-btn');
+  const registerBtn = document.getElementById('register-btn');
+  const profileBtn = document.getElementById('profile-btn');
+  const adminNav = document.getElementById('nav-admin');
+  const settingsNav = document.getElementById('nav-settings');
+
+  if (currentUser) {
+    userInfo.textContent = `Signed in as ${currentUser.user_name || currentUser.username || 'User'}`;
+    authToggleBtn.textContent = 'Logout';
+    authToggleBtn.classList.remove('btn-secondary');
+    authToggleBtn.classList.add('btn-primary');
+    // Hide Register when logged in - Login/Logout is a toggle
+    registerBtn.hidden = true;
+    profileBtn.hidden = false;
+    settingsNav.hidden = false;
+
+    // Show admin nav if user is admin
+    if (currentUser.is_admin) {
+      adminNav.hidden = false;
+    } else {
+      adminNav.hidden = true;
+    }
+  } else {
+    userInfo.textContent = 'Not signed in (local mode)';
+    authToggleBtn.textContent = 'Login';
+    authToggleBtn.classList.remove('btn-primary');
+    authToggleBtn.classList.add('btn-secondary');
+    // Keep Register hidden - users access registration through the Login modal
+    // This makes Login/Logout a true toggle button
+    registerBtn.hidden = true;
+    profileBtn.hidden = true;
+    adminNav.hidden = true;
+    settingsNav.hidden = true;
+  }
+}
+
+// Google OAuth state
+let googleOAuthEnabled = false;
+
+// Check if Google OAuth is available
+async function checkGoogleOAuth() {
+  try {
+    const result = await api.auth.googleEnabled();
+    googleOAuthEnabled = result.enabled;
+    // Show/hide Google OAuth buttons
+    document.getElementById('login-google-section').hidden = !googleOAuthEnabled;
+    document.getElementById('register-google-section').hidden = !googleOAuthEnabled;
+  } catch (err) {
+    console.log('Google OAuth not available');
+    googleOAuthEnabled = false;
+  }
+}
+
+// Handle OAuth errors from URL params
+function handleOAuthErrors() {
+  const params = new URLSearchParams(window.location.search);
+  const error = params.get('error');
+  if (error) {
+    let message = 'Login failed';
+    switch (error) {
+      case 'google_oauth_error':
+        message = params.get('message') || 'Google authentication failed';
+        break;
+      case 'invalid_state':
+        message = 'Session expired. Please try again.';
+        break;
+      case 'account_disabled':
+        message = 'Your account has been disabled.';
+        break;
+      case 'token_exchange_failed':
+        message = 'Failed to verify with Google. Please try again.';
+        break;
+      default:
+        message = 'Authentication failed. Please try again.';
+    }
+    announce(message);
+    // Clean up URL
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }
+}
+
+// Auth modal functions
+function showLoginModal() {
+  document.getElementById('login-error').hidden = true;
+  document.getElementById('login-form').reset();
+  openModal('login-modal');
+}
+
+function showRegisterModal() {
+  document.getElementById('register-error').hidden = true;
+  document.getElementById('register-form').reset();
+  openModal('register-modal');
+}
+
+function showProfileModal() {
+  if (!currentUser) return;
+  document.getElementById('profile-error').hidden = true;
+  document.getElementById('password-error').hidden = true;
+  document.getElementById('profile-email').value = currentUser.email || '';
+  document.getElementById('profile-display-name').value = currentUser.user_name || '';
+  document.getElementById('profile-username').textContent = currentUser.username || '';
+  document.getElementById('profile-role').textContent = currentUser.role === 'admin' ? 'Administrator' : 'Standard User';
+  document.getElementById('change-password-form').reset();
+  openModal('profile-modal');
+}
+
+async function handleLogin(e) {
+  e.preventDefault();
+  const username = document.getElementById('login-username').value;
+  const password = document.getElementById('login-password').value;
+  const errorEl = document.getElementById('login-error');
+
+  try {
+    await api.auth.login(username, password);
+    closeModal();
+    await loadUserInfo();
+    await loadSettings();
+    await loadBibMaps();
+    await loadReferences();
+    await loadTaxonomies();
+    announce('Logged in successfully');
+  } catch (err) {
+    errorEl.textContent = err.message;
+    errorEl.hidden = false;
+  }
+}
+
+async function handleRegister(e) {
+  e.preventDefault();
+  const email = document.getElementById('register-email').value;
+  const username = document.getElementById('register-username').value;
+  const displayName = document.getElementById('register-display-name').value;
+  const password = document.getElementById('register-password').value;
+  const confirmPassword = document.getElementById('register-confirm-password').value;
+  const errorEl = document.getElementById('register-error');
+
+  if (password !== confirmPassword) {
+    errorEl.textContent = 'Passwords do not match';
+    errorEl.hidden = false;
+    return;
+  }
+
+  try {
+    await api.auth.register({
+      email,
+      username,
+      display_name: displayName || username,
+      password
+    });
+    // Auto-login after registration
+    await api.auth.login(username, password);
+    closeModal();
+    await loadUserInfo();
+    await loadSettings();
+    await loadBibMaps();
+    await loadReferences();
+    await loadTaxonomies();
+    announce('Account created and logged in');
+  } catch (err) {
+    errorEl.textContent = err.message;
+    errorEl.hidden = false;
+  }
+}
+
+async function handleLogout() {
+  try {
+    await api.auth.logout();
+    currentUser = null;
+    updateAuthUI();
+    await loadBibMaps();
+    await loadReferences();
+    await loadTaxonomies();
+    showSection('bibmaps');
+    announce('Logged out successfully');
+  } catch (err) {
+    announce(`Logout failed: ${err.message}`);
+  }
+}
+
+async function handleProfileUpdate(e) {
+  e.preventDefault();
+  const email = document.getElementById('profile-email').value;
+  const displayName = document.getElementById('profile-display-name').value;
+  const errorEl = document.getElementById('profile-error');
+
+  try {
+    await api.auth.updateProfile({ email, display_name: displayName });
+    await loadUserInfo();
+    closeModal();
+    announce('Profile updated');
+  } catch (err) {
+    errorEl.textContent = err.message;
+    errorEl.hidden = false;
+  }
+}
+
+async function handlePasswordChange(e) {
+  e.preventDefault();
+  const currentPassword = document.getElementById('current-password').value;
+  const newPassword = document.getElementById('new-password').value;
+  const confirmPassword = document.getElementById('confirm-new-password').value;
+  const errorEl = document.getElementById('password-error');
+
+  if (newPassword !== confirmPassword) {
+    errorEl.textContent = 'New passwords do not match';
+    errorEl.hidden = false;
+    return;
+  }
+
+  try {
+    await api.auth.changePassword(currentPassword, newPassword);
+    document.getElementById('change-password-form').reset();
+    errorEl.hidden = true;
+    announce('Password changed successfully');
+  } catch (err) {
+    errorEl.textContent = err.message;
+    errorEl.hidden = false;
+  }
+}
+
+// Admin user management
+let allUsers = [];
+let editingUserId = null;
+
+async function loadUsers() {
+  try {
+    const search = document.getElementById('user-search')?.value || '';
+    allUsers = await api.auth.listUsers(0, 100, search || null);
+    renderUsersList();
+  } catch (err) {
+    announce(`Error loading users: ${err.message}`);
+  }
+}
+
+function renderUsersList() {
+  const container = document.getElementById('users-list');
+  if (!container) return;
+
+  if (allUsers.length === 0) {
+    container.innerHTML = '<p class="empty-message">No users found</p>';
+    return;
+  }
+
+  container.innerHTML = allUsers.map(user => `
+    <div class="card user-card" role="listitem" data-user-id="${user.id}">
+      <div class="card-header">
+        <h3 class="card-title">${escapeHtml(user.display_name || user.username)}</h3>
+        <span class="badge ${user.role === 'admin' ? 'badge-admin' : 'badge-user'}">${user.role}</span>
+      </div>
+      <p class="card-meta">@${escapeHtml(user.username)}</p>
+      <p class="card-meta">${escapeHtml(user.email)}</p>
+      <p class="card-meta ${user.is_active ? '' : 'text-danger'}">${user.is_active ? 'Active' : 'Inactive'}</p>
+      <div class="card-actions">
+        <button class="btn-secondary btn-sm edit-user-btn">Edit</button>
+        ${user.id !== currentUser?.user_id ? '<button class="btn-danger btn-sm delete-user-btn">Delete</button>' : ''}
+      </div>
+    </div>
+  `).join('');
+
+  // Add event listeners
+  container.querySelectorAll('.edit-user-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const userId = e.target.closest('.user-card').dataset.userId;
+      openEditUserModal(parseInt(userId));
+    });
+  });
+
+  container.querySelectorAll('.delete-user-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const userId = e.target.closest('.user-card').dataset.userId;
+      const user = allUsers.find(u => u.id === parseInt(userId));
+      if (user && await showConfirm(`Delete user "${user.username}"? This will also delete all their data.`)) {
+        try {
+          await api.auth.deleteUser(userId);
+          await loadUsers();
+          announce('User deleted');
+        } catch (err) {
+          announce(`Error deleting user: ${err.message}`);
+        }
+      }
+    });
+  });
+}
+
+function openCreateUserModal() {
+  editingUserId = null;
+  document.getElementById('user-modal-title').textContent = 'Create User';
+  document.getElementById('user-submit-btn').textContent = 'Create';
+  document.getElementById('user-form').reset();
+  document.getElementById('user-password').required = true;
+  document.getElementById('user-password-group').querySelector('label').textContent = 'Password:';
+  document.getElementById('user-error').hidden = true;
+  document.getElementById('user-active').checked = true;
+  openModal('user-modal');
+}
+
+function openEditUserModal(userId) {
+  const user = allUsers.find(u => u.id === userId);
+  if (!user) return;
+
+  editingUserId = userId;
+  document.getElementById('user-modal-title').textContent = 'Edit User';
+  document.getElementById('user-submit-btn').textContent = 'Save';
+  document.getElementById('user-email').value = user.email;
+  document.getElementById('user-username').value = user.username;
+  document.getElementById('user-display-name').value = user.display_name || '';
+  document.getElementById('user-password').value = '';
+  document.getElementById('user-password').required = false;
+  document.getElementById('user-password-group').querySelector('label').textContent = 'New Password (leave blank to keep):';
+  document.getElementById('user-role').value = user.role;
+  document.getElementById('user-active').checked = user.is_active;
+  document.getElementById('user-error').hidden = true;
+  openModal('user-modal');
+}
+
+async function handleUserFormSubmit(e) {
+  e.preventDefault();
+  const errorEl = document.getElementById('user-error');
+  const email = document.getElementById('user-email').value;
+  const username = document.getElementById('user-username').value;
+  const displayName = document.getElementById('user-display-name').value;
+  const password = document.getElementById('user-password').value;
+  const role = document.getElementById('user-role').value;
+  const isActive = document.getElementById('user-active').checked;
+
+  try {
+    if (editingUserId) {
+      // Update existing user
+      const updateData = {
+        email,
+        username,
+        display_name: displayName || username,
+        role,
+        is_active: isActive
+      };
+      await api.auth.updateUser(editingUserId, updateData);
+
+      // Reset password if provided
+      if (password) {
+        await api.auth.resetPassword(editingUserId, password);
+      }
+      announce('User updated');
+    } else {
+      // Create new user
+      await api.auth.createUser({
+        email,
+        username,
+        display_name: displayName || username,
+        password,
+        role,
+        is_active: isActive
+      });
+      announce('User created');
+    }
+    closeModal();
+    await loadUsers();
+  } catch (err) {
+    errorEl.textContent = err.message;
+    errorEl.hidden = false;
+  }
+}
+
+// User Settings
+let userSettings = null;
+
+async function loadSettings() {
+  if (!currentUser) return;
+
+  try {
+    userSettings = await api.settings.get();
+    applySettings();
+    populateSettingsForm();
+  } catch (err) {
+    console.error('Failed to load settings:', err);
+  }
+}
+
+function applySettings() {
+  if (!userSettings) return;
+
+  // Apply theme
+  applyTheme(userSettings.theme);
+
+  // Apply references defaults
+  refsPageSize = userSettings.default_refs_page_size || 20;
+  refsSortBy = userSettings.default_refs_sort || 'imported-desc';
+
+  // Update page size select if on references page
+  const pageSizeSelect = document.getElementById('ref-page-size');
+  if (pageSizeSelect) {
+    pageSizeSelect.value = refsPageSize;
+  }
+  const sortSelect = document.getElementById('ref-sort');
+  if (sortSelect) {
+    sortSelect.value = refsSortBy;
+  }
+}
+
+function applyTheme(theme) {
+  const root = document.documentElement;
+
+  if (theme === 'dark') {
+    root.setAttribute('data-theme', 'dark');
+  } else if (theme === 'light') {
+    root.setAttribute('data-theme', 'light');
+  } else {
+    // System default - check preference
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      root.setAttribute('data-theme', 'dark');
+    } else {
+      root.removeAttribute('data-theme');
+    }
+  }
+}
+
+function populateSettingsForm() {
+  if (!userSettings) return;
+
+  document.getElementById('setting-theme').value = userSettings.theme || 'system';
+  document.getElementById('setting-node-color').value = userSettings.default_node_color || '#3B82F6';
+  document.getElementById('setting-text-color').value = userSettings.default_text_color || '#FFFFFF';
+  document.getElementById('setting-node-shape').value = userSettings.default_node_shape || 'rectangle';
+  document.getElementById('setting-snap-grid').checked = userSettings.snap_to_grid || false;
+  document.getElementById('setting-grid-size').value = userSettings.grid_size || 20;
+  document.getElementById('setting-auto-save').checked = userSettings.auto_save !== false;
+  document.getElementById('setting-refs-page-size').value = userSettings.default_refs_page_size || 20;
+  document.getElementById('setting-refs-sort').value = userSettings.default_refs_sort || 'imported-desc';
+  document.getElementById('setting-email-notifications').checked = userSettings.email_notifications !== false;
+}
+
+async function updateSetting(key, value) {
+  if (!currentUser) return;
+
+  try {
+    userSettings = await api.settings.update({ [key]: value });
+    applySettings();
+    announce('Setting saved');
+  } catch (err) {
+    announce(`Error saving setting: ${err.message}`);
+  }
+}
+
+async function resetSettings() {
+  if (!currentUser) return;
+
+  const confirmed = await showConfirm(
+    'Are you sure you want to reset all settings to defaults?',
+    'Reset Settings',
+    'Reset'
+  );
+
+  if (confirmed) {
+    try {
+      userSettings = await api.settings.reset();
+      applySettings();
+      populateSettingsForm();
+      announce('Settings reset to defaults');
+    } catch (err) {
+      announce(`Error resetting settings: ${err.message}`);
+    }
   }
 }
 
@@ -292,6 +780,177 @@ function resetTaxonomyModal() {
   document.getElementById('create-taxonomy-form').reset();
   document.getElementById('tax-color').value = '#6B7280';
   document.getElementById('tax-submit-btn').textContent = 'Create';
+}
+
+// Media
+async function loadMedia(taxonomyId = null) {
+  try {
+    mediaTaxonomyFilter = taxonomyId || '';
+    allMedia = await api.media.list(taxonomyId || null);
+    applyMediaFilterAndSort();
+  } catch (err) {
+    announce(`Error loading media: ${err.message}`);
+  }
+}
+
+function applyMediaFilterAndSort() {
+  let items = [...allMedia];
+
+  // Apply title filter
+  if (mediaTitleFilter) {
+    const filter = mediaTitleFilter.toLowerCase();
+    items = items.filter(m =>
+      (m.title && m.title.toLowerCase().includes(filter)) ||
+      (m.description && m.description.toLowerCase().includes(filter))
+    );
+  }
+
+  // Apply sorting
+  items = sortMedia(items, mediaSortBy);
+
+  filteredMedia = items;
+
+  // Reset to page 1 when filters change
+  const maxPage = Math.ceil(filteredMedia.length / mediaPageSize) || 1;
+  if (mediaCurrentPage > maxPage) {
+    mediaCurrentPage = 1;
+  }
+
+  renderMediaList();
+}
+
+function sortMedia(items, sortBy) {
+  const sorted = [...items];
+
+  switch (sortBy) {
+    case 'created-desc':
+      sorted.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      break;
+    case 'created-asc':
+      sorted.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+      break;
+    case 'title-asc':
+      sorted.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+      break;
+    case 'title-desc':
+      sorted.sort((a, b) => (b.title || '').localeCompare(a.title || ''));
+      break;
+  }
+
+  return sorted;
+}
+
+function renderMediaList() {
+  const container = document.getElementById('media-list');
+  const totalItems = filteredMedia.length;
+  const totalPages = Math.ceil(totalItems / mediaPageSize) || 1;
+
+  // Ensure current page is valid
+  if (mediaCurrentPage < 1) mediaCurrentPage = 1;
+  if (mediaCurrentPage > totalPages) mediaCurrentPage = totalPages;
+
+  // Calculate pagination
+  const startIdx = (mediaCurrentPage - 1) * mediaPageSize;
+  const endIdx = Math.min(startIdx + mediaPageSize, totalItems);
+  const pageItems = filteredMedia.slice(startIdx, endIdx);
+
+  if (totalItems === 0) {
+    container.innerHTML = '<p>No media found. Click "Add Media" to add your first link!</p>';
+  } else {
+    container.innerHTML = pageItems.map(m => `
+      <article class="reference-card media-card" role="listitem" data-id="${m.id}">
+        <h3>${escapeHtml(m.title)}</h3>
+        <p class="meta"><a href="${escapeHtml(m.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(m.url)}</a></p>
+        ${m.description ? `<p class="description">${escapeHtml(m.description)}</p>` : ''}
+        <div class="tags">
+          ${m.taxonomies?.map(t => `
+            <span class="tag" style="background: ${t.color}; color: white;">${escapeHtml(t.name)}</span>
+          `).join('') || ''}
+        </div>
+        <p class="meta">Added ${formatDate(m.created_at)}</p>
+      </article>
+    `).join('');
+
+    // Click handlers
+    container.querySelectorAll('.media-card').forEach(card => {
+      card.addEventListener('click', (e) => {
+        // Don't open modal if clicking a link
+        if (e.target.tagName === 'A') return;
+        openMediaModal(parseInt(card.dataset.id));
+      });
+    });
+  }
+
+  // Update pagination UI
+  updateMediaPaginationUI(totalItems, totalPages, startIdx, endIdx);
+}
+
+function updateMediaPaginationUI(totalItems, totalPages, startIdx, endIdx) {
+  const info = document.getElementById('media-pagination-info');
+  const pageIndicator = document.getElementById('media-page-indicator');
+  const prevBtn = document.getElementById('media-prev-page');
+  const nextBtn = document.getElementById('media-next-page');
+
+  if (totalItems === 0) {
+    info.textContent = 'No media';
+  } else {
+    info.textContent = `Showing ${startIdx + 1}-${endIdx} of ${totalItems} media`;
+  }
+
+  pageIndicator.textContent = `Page ${mediaCurrentPage} of ${totalPages}`;
+  prevBtn.disabled = mediaCurrentPage <= 1;
+  nextBtn.disabled = mediaCurrentPage >= totalPages;
+}
+
+function openMediaModal(mediaId = null) {
+  const modal = document.getElementById('media-modal');
+
+  if (mediaId) {
+    // Edit mode
+    const media = allMedia.find(m => m.id === mediaId);
+    if (!media) return;
+
+    editingMediaId = mediaId;
+    document.getElementById('media-modal-title').textContent = 'Edit Media';
+    document.getElementById('media-title').value = media.title;
+    document.getElementById('media-url').value = media.url;
+    document.getElementById('media-description').value = media.description || '';
+    document.getElementById('media-submit-btn').textContent = 'Save';
+    document.getElementById('delete-media-btn').hidden = false;
+
+    // Set up tags
+    mediaSelectedTags = media.taxonomies ? media.taxonomies.map(t => ({ id: t.id, name: t.name, color: t.color })) : [];
+  } else {
+    // Create mode
+    editingMediaId = null;
+    document.getElementById('media-modal-title').textContent = 'Add Media';
+    document.getElementById('media-form').reset();
+    document.getElementById('media-submit-btn').textContent = 'Add';
+    document.getElementById('delete-media-btn').hidden = true;
+    mediaSelectedTags = [];
+  }
+
+  renderSelectedTags('media');
+  openModal('media-modal');
+}
+
+function updateMediaTaxonomySelect() {
+  const select = document.getElementById('media-taxonomy-filter');
+  if (!select) return;
+
+  const currentValue = select.value;
+  select.innerHTML = '<option value="">All</option>';
+
+  taxonomies.forEach(tax => {
+    const option = document.createElement('option');
+    option.value = tax.id;
+    option.textContent = tax.name;
+    option.style.backgroundColor = tax.color;
+    if (currentValue === String(tax.id)) {
+      option.selected = true;
+    }
+    select.appendChild(option);
+  });
 }
 
 // BibMaps
@@ -715,11 +1374,16 @@ async function loadNodeReferences(nodeId, linkEnabled = true) {
   const countSpan = document.getElementById('node-refs-count');
 
   try {
-    const refs = await api.nodes.getReferences(nodeId);
-    countSpan.textContent = refs.length;
+    // Fetch both references and media counts
+    const [refs, media] = await Promise.all([
+      api.nodes.getReferences(nodeId),
+      api.nodes.getMedia(nodeId)
+    ]);
+    const totalCount = refs.length + media.length;
+    countSpan.textContent = totalCount;
 
-    // Show the link button if there are references and linking is enabled
-    container.hidden = !(refs.length > 0 && linkEnabled);
+    // Show the link button if there are references or media and linking is enabled
+    container.hidden = !(totalCount > 0 && linkEnabled);
   } catch (err) {
     console.error('Failed to load node references:', err);
     container.hidden = true;
@@ -743,40 +1407,73 @@ function openNodeReferencesPage(nodeId) {
 
 async function loadFullNodeReferences(nodeId) {
   const content = document.getElementById('node-refs-page-content');
-  content.innerHTML = '<p>Loading references...</p>';
+  content.innerHTML = '<p>Loading references and media...</p>';
 
   try {
-    const refs = await api.nodes.getReferences(nodeId);
-    if (refs.length === 0) {
-      content.innerHTML = '<p>No linked references found. Add tags to this node that match your references to see them here.</p>';
+    // Fetch both references and media in parallel
+    const [refs, media] = await Promise.all([
+      api.nodes.getReferences(nodeId),
+      api.nodes.getMedia(nodeId)
+    ]);
+
+    if (refs.length === 0 && media.length === 0) {
+      content.innerHTML = '<p>No linked references or media found. Add tags to this node that match your references or media to see them here.</p>';
       return;
     }
 
-    content.innerHTML = refs.map(ref => `
-      <article class="reference-card" role="listitem" data-id="${ref.id}">
-        <h3>${escapeHtml(ref.title || ref.bibtex_key)}</h3>
-        <p class="authors">${escapeHtml(ref.author || 'Unknown author')}</p>
-        <p class="meta">
-          ${ref.year ? `(${ref.year})` : ''}
-          ${ref.journal ? `<em>${escapeHtml(ref.journal)}</em>` : ''}
-          ${ref.booktitle ? `In <em>${escapeHtml(ref.booktitle)}</em>` : ''}
-        </p>
-        <div class="tags">
-          ${ref.taxonomies?.map(t => `
-            <span class="tag" style="background: ${t.color}; color: white;">${escapeHtml(t.name)}</span>
-          `).join('') || ''}
-        </div>
-        ${ref.doi ? `<p class="meta"><a href="https://doi.org/${ref.doi}" target="_blank">DOI: ${ref.doi}</a></p>` : ''}
-        ${ref.abstract ? `<p class="abstract">${escapeHtml(ref.abstract.substring(0, 300))}${ref.abstract.length > 300 ? '...' : ''}</p>` : ''}
-      </article>
-    `).join('');
+    let html = '';
 
-    // Add click handlers to open reference details
-    content.querySelectorAll('.reference-card').forEach(card => {
+    // Add references section if any
+    if (refs.length > 0) {
+      html += '<h3 class="section-subheading">References (' + refs.length + ')</h3>';
+      html += refs.map(ref => `
+        <article class="reference-card" role="listitem" data-id="${ref.id}" data-type="reference">
+          <h3>${escapeHtml(ref.title || ref.bibtex_key)}</h3>
+          <p class="authors">${escapeHtml(ref.author || 'Unknown author')}</p>
+          <p class="meta">
+            ${ref.year ? `(${ref.year})` : ''}
+            ${ref.journal ? `<em>${escapeHtml(ref.journal)}</em>` : ''}
+            ${ref.booktitle ? `In <em>${escapeHtml(ref.booktitle)}</em>` : ''}
+          </p>
+          <div class="tags">
+            ${ref.taxonomies?.map(t => `
+              <span class="tag" style="background: ${t.color}; color: white;">${escapeHtml(t.name)}</span>
+            `).join('') || ''}
+          </div>
+          ${ref.doi ? `<p class="meta"><a href="https://doi.org/${ref.doi}" target="_blank" rel="noopener noreferrer">DOI: ${ref.doi}</a></p>` : ''}
+          ${ref.abstract ? `<p class="abstract">${escapeHtml(ref.abstract.substring(0, 300))}${ref.abstract.length > 300 ? '...' : ''}</p>` : ''}
+        </article>
+      `).join('');
+    }
+
+    // Add media section if any
+    if (media.length > 0) {
+      html += '<h3 class="section-subheading">Media (' + media.length + ')</h3>';
+      html += media.map(m => `
+        <article class="reference-card media-card" role="listitem" data-id="${m.id}" data-type="media">
+          <h3>${escapeHtml(m.title)}</h3>
+          <p class="meta"><a href="${escapeHtml(m.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(m.url)}</a></p>
+          ${m.description ? `<p class="description">${escapeHtml(m.description)}</p>` : ''}
+          <div class="tags">
+            ${m.taxonomies?.map(t => `
+              <span class="tag" style="background: ${t.color}; color: white;">${escapeHtml(t.name)}</span>
+            `).join('') || ''}
+          </div>
+          <p class="meta">Added ${formatDate(m.created_at)}</p>
+        </article>
+      `).join('');
+    }
+
+    content.innerHTML = html;
+
+    // Add click handlers for references
+    content.querySelectorAll('.reference-card[data-type="reference"]').forEach(card => {
       card.addEventListener('click', () => openReferenceDetail(card.dataset.id));
     });
+
+    // Media cards - clicking on them doesn't open a modal (links are clickable directly)
   } catch (err) {
-    content.innerHTML = `<p>Error loading references: ${err.message}</p>`;
+    content.innerHTML = `<p>Error loading: ${err.message}</p>`;
   }
 }
 
@@ -978,6 +1675,7 @@ function escapeHtml(text) {
 function getSelectedTags(prefix) {
   if (prefix === 'ref') return refSelectedTags;
   if (prefix === 'node') return nodeSelectedTags;
+  if (prefix === 'media') return mediaSelectedTags;
   return importSelectedTags;
 }
 
@@ -986,6 +1684,8 @@ function setSelectedTags(prefix, tags) {
     refSelectedTags = tags;
   } else if (prefix === 'node') {
     nodeSelectedTags = tags;
+  } else if (prefix === 'media') {
+    mediaSelectedTags = tags;
   } else {
     importSelectedTags = tags;
   }
@@ -1182,14 +1882,85 @@ function setupEventListeners() {
     loadReferences();
   });
 
+  navButtons.media.addEventListener('click', () => {
+    showSection('media');
+    loadMedia();
+    updateMediaTaxonomySelect();
+  });
+
   navButtons.taxonomies.addEventListener('click', () => {
     showSection('taxonomies');
     loadTaxonomies();
   });
 
+  navButtons.settings.addEventListener('click', () => {
+    showSection('settings');
+    loadSettings();
+  });
+
+  navButtons.admin.addEventListener('click', () => {
+    showSection('admin');
+    loadUsers();
+  });
+
   navButtons.about.addEventListener('click', () => {
     showSection('about');
   });
+
+  // Auth buttons
+  document.getElementById('auth-toggle-btn').addEventListener('click', () => {
+    if (currentUser) {
+      handleLogout();
+    } else {
+      showLoginModal();
+    }
+  });
+  document.getElementById('register-btn').addEventListener('click', showRegisterModal);
+  document.getElementById('profile-btn').addEventListener('click', showProfileModal);
+
+  // Auth forms
+  document.getElementById('login-form').addEventListener('submit', handleLogin);
+  document.getElementById('register-form').addEventListener('submit', handleRegister);
+  document.getElementById('profile-form').addEventListener('submit', handleProfileUpdate);
+  document.getElementById('change-password-form').addEventListener('submit', handlePasswordChange);
+
+  // Switch between login/register
+  document.getElementById('switch-to-register').addEventListener('click', (e) => {
+    e.preventDefault();
+    closeModal();
+    showRegisterModal();
+  });
+  document.getElementById('switch-to-login').addEventListener('click', (e) => {
+    e.preventDefault();
+    closeModal();
+    showLoginModal();
+  });
+
+  // Google OAuth buttons
+  document.getElementById('google-login-btn').addEventListener('click', () => {
+    api.auth.googleLogin();
+  });
+  document.getElementById('google-register-btn').addEventListener('click', () => {
+    api.auth.googleLogin();
+  });
+
+  // Admin user management
+  document.getElementById('create-user')?.addEventListener('click', openCreateUserModal);
+  document.getElementById('user-form').addEventListener('submit', handleUserFormSubmit);
+  document.getElementById('user-search')?.addEventListener('input', debounce(() => loadUsers(), 300));
+
+  // Settings
+  document.getElementById('reset-settings')?.addEventListener('click', resetSettings);
+  document.getElementById('setting-theme')?.addEventListener('change', (e) => updateSetting('theme', e.target.value));
+  document.getElementById('setting-node-color')?.addEventListener('input', debounce((e) => updateSetting('default_node_color', e.target.value), 300));
+  document.getElementById('setting-text-color')?.addEventListener('input', debounce((e) => updateSetting('default_text_color', e.target.value), 300));
+  document.getElementById('setting-node-shape')?.addEventListener('change', (e) => updateSetting('default_node_shape', e.target.value));
+  document.getElementById('setting-snap-grid')?.addEventListener('change', (e) => updateSetting('snap_to_grid', e.target.checked));
+  document.getElementById('setting-grid-size')?.addEventListener('change', (e) => updateSetting('grid_size', parseInt(e.target.value) || 20));
+  document.getElementById('setting-auto-save')?.addEventListener('change', (e) => updateSetting('auto_save', e.target.checked));
+  document.getElementById('setting-refs-page-size')?.addEventListener('change', (e) => updateSetting('default_refs_page_size', parseInt(e.target.value) || 20));
+  document.getElementById('setting-refs-sort')?.addEventListener('change', (e) => updateSetting('default_refs_sort', e.target.value));
+  document.getElementById('setting-email-notifications')?.addEventListener('change', (e) => updateSetting('email_notifications', e.target.checked));
 
   // Create BibMap
   document.getElementById('create-bibmap').addEventListener('click', () => {
@@ -1691,6 +2462,101 @@ function setupEventListeners() {
     renderReferencesList();
   });
 
+  // Media section event listeners
+  document.getElementById('add-media').addEventListener('click', () => {
+    openMediaModal();
+  });
+
+  document.getElementById('media-taxonomy-filter').addEventListener('change', (e) => {
+    mediaCurrentPage = 1;
+    loadMedia(e.target.value || null);
+  });
+
+  const mediaTitleFilterInput = document.getElementById('media-title-filter');
+  const debouncedMediaTitleFilter = debounce((value) => {
+    mediaTitleFilter = value;
+    mediaCurrentPage = 1;
+    applyMediaFilterAndSort();
+  }, 300);
+
+  mediaTitleFilterInput.addEventListener('input', (e) => {
+    debouncedMediaTitleFilter(e.target.value);
+  });
+
+  document.getElementById('media-sort').addEventListener('change', (e) => {
+    mediaSortBy = e.target.value;
+    applyMediaFilterAndSort();
+  });
+
+  // Media pagination controls
+  document.getElementById('media-prev-page').addEventListener('click', () => {
+    if (mediaCurrentPage > 1) {
+      mediaCurrentPage--;
+      renderMediaList();
+    }
+  });
+
+  document.getElementById('media-next-page').addEventListener('click', () => {
+    const totalPages = Math.ceil(filteredMedia.length / mediaPageSize) || 1;
+    if (mediaCurrentPage < totalPages) {
+      mediaCurrentPage++;
+      renderMediaList();
+    }
+  });
+
+  document.getElementById('media-page-size').addEventListener('change', (e) => {
+    mediaPageSize = parseInt(e.target.value) || 20;
+    mediaCurrentPage = 1;
+    renderMediaList();
+  });
+
+  // Media form submit
+  document.getElementById('media-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      const data = {
+        title: document.getElementById('media-title').value,
+        url: document.getElementById('media-url').value,
+        description: document.getElementById('media-description').value || null,
+        taxonomy_ids: mediaSelectedTags.map(t => t.id)
+      };
+
+      if (editingMediaId) {
+        await api.media.update(editingMediaId, data);
+        announce('Media updated');
+      } else {
+        await api.media.create(data);
+        announce('Media added');
+      }
+
+      closeAllModals();
+      await loadMedia();
+    } catch (err) {
+      announce(`Error: ${err.message}`);
+    }
+  });
+
+  // Delete media button
+  document.getElementById('delete-media-btn').addEventListener('click', async () => {
+    if (!editingMediaId) return;
+
+    closeAllModals();
+    const confirmed = await showConfirm(
+      'Are you sure you want to delete this media entry?',
+      'Delete Media',
+      'Delete'
+    );
+    if (confirmed) {
+      try {
+        await api.media.delete(editingMediaId);
+        await loadMedia();
+        announce('Media deleted');
+      } catch (err) {
+        announce(`Error: ${err.message}`);
+      }
+    }
+  });
+
   // Update BibTeX for reference
   document.getElementById('update-bibtex-btn').addEventListener('click', async () => {
     if (!currentReferenceId) return;
@@ -1870,7 +2736,11 @@ async function init() {
     setupTagInput('ref');
     setupTagInput('import');
     setupTagInput('node');
+    setupTagInput('media');
+    handleOAuthErrors();
+    await checkGoogleOAuth();
     await loadUserInfo();
+    await loadSettings();
     await loadTaxonomies();
     await loadBibMaps();
     showSection('bibmaps');

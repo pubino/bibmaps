@@ -1,6 +1,126 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, EmailStr
 from typing import Optional, List
 from datetime import datetime
+from enum import Enum
+
+
+# User Role Enum for schemas
+class UserRoleEnum(str, Enum):
+    ADMIN = "admin"
+    USER = "user"
+
+
+# User Schemas
+class UserBase(BaseModel):
+    email: EmailStr
+    username: str
+    display_name: Optional[str] = None
+
+
+class UserCreate(UserBase):
+    password: str
+
+
+class UserCreateByAdmin(UserBase):
+    password: str
+    role: UserRoleEnum = UserRoleEnum.USER
+    is_active: bool = True
+
+
+class UserUpdate(BaseModel):
+    display_name: Optional[str] = None
+    email: Optional[EmailStr] = None
+
+
+class UserUpdateByAdmin(BaseModel):
+    email: Optional[EmailStr] = None
+    username: Optional[str] = None
+    display_name: Optional[str] = None
+    role: Optional[UserRoleEnum] = None
+    is_active: Optional[bool] = None
+
+
+class UserLogin(BaseModel):
+    username: str  # Can be username or email
+    password: str
+
+
+class UserResponse(UserBase):
+    id: int
+    role: UserRoleEnum
+    is_active: bool
+    oauth_provider: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    last_login: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class UserListResponse(BaseModel):
+    id: int
+    email: str
+    username: str
+    display_name: Optional[str] = None
+    role: UserRoleEnum
+    is_active: bool
+    created_at: datetime
+    last_login: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
+class TokenData(BaseModel):
+    user_id: Optional[int] = None
+    username: Optional[str] = None
+
+
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str
+
+
+# User Settings Schemas
+class UserSettingsBase(BaseModel):
+    theme: str = "system"
+    default_node_color: str = "#3B82F6"
+    default_text_color: str = "#FFFFFF"
+    default_node_shape: str = "rectangle"
+    snap_to_grid: bool = False
+    grid_size: int = 20
+    auto_save: bool = True
+    default_refs_page_size: int = 20
+    default_refs_sort: str = "imported-desc"
+    email_notifications: bool = True
+
+
+class UserSettingsUpdate(BaseModel):
+    theme: Optional[str] = None
+    default_node_color: Optional[str] = None
+    default_text_color: Optional[str] = None
+    default_node_shape: Optional[str] = None
+    snap_to_grid: Optional[bool] = None
+    grid_size: Optional[int] = None
+    auto_save: Optional[bool] = None
+    default_refs_page_size: Optional[int] = None
+    default_refs_sort: Optional[str] = None
+    email_notifications: Optional[bool] = None
+
+
+class UserSettingsResponse(UserSettingsBase):
+    id: int
+    user_id: int
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
 
 
 # Taxonomy Schemas
@@ -90,6 +210,10 @@ class Node(NodeBase):
 class ConnectionBase(BaseModel):
     source_node_id: int
     target_node_id: int
+    source_attach_x: Optional[float] = None
+    source_attach_y: Optional[float] = None
+    target_attach_x: Optional[float] = None
+    target_attach_y: Optional[float] = None
     line_color: str = "#6B7280"
     line_width: int = 2
     line_style: str = "solid"
@@ -105,6 +229,10 @@ class ConnectionCreate(ConnectionBase):
 class ConnectionUpdate(BaseModel):
     source_node_id: Optional[int] = None
     target_node_id: Optional[int] = None
+    source_attach_x: Optional[float] = None
+    source_attach_y: Optional[float] = None
+    target_attach_x: Optional[float] = None
+    target_attach_y: Optional[float] = None
     line_color: Optional[str] = None
     line_width: Optional[int] = None
     line_style: Optional[str] = None
@@ -228,3 +356,32 @@ class BibTeXImportResult(BaseModel):
 # BibTeX Update (for editing existing reference)
 class BibTeXUpdate(BaseModel):
     bibtex_content: str
+
+
+# Media Schemas
+class MediaBase(BaseModel):
+    title: str
+    url: str
+    description: Optional[str] = None
+
+
+class MediaCreate(MediaBase):
+    taxonomy_ids: Optional[List[int]] = []
+
+
+class MediaUpdate(BaseModel):
+    title: Optional[str] = None
+    url: Optional[str] = None
+    description: Optional[str] = None
+    taxonomy_ids: Optional[List[int]] = None
+
+
+class Media(MediaBase):
+    id: int
+    user_id: Optional[int] = None
+    created_at: datetime
+    updated_at: datetime
+    taxonomies: List[Taxonomy] = []
+
+    class Config:
+        from_attributes = True

@@ -375,12 +375,51 @@ export class BibMapCanvas {
     const tx = target.x + (target.width || 150) / 2;
     const ty = target.y + (target.height || 60) / 2;
 
-    // Calculate connection points on node edges
-    const angle = Math.atan2(ty - sy, tx - sx);
-    const sourceEdge = this.getEdgePoint(source, angle);
-    const targetEdge = this.getEdgePoint(target, angle + Math.PI);
+    let sourceEdge, targetEdge;
+
+    // Use stored attachment points if available, otherwise calculate automatically
+    if (connection.target_attach_x != null && connection.target_attach_y != null) {
+      // Target attachment point is stored relative to target node position
+      const targetPoint = {
+        x: target.x + connection.target_attach_x,
+        y: target.y + connection.target_attach_y
+      };
+
+      // Calculate source edge point based on direction to target attachment point
+      const angleToTarget = Math.atan2(targetPoint.y - sy, targetPoint.x - sx);
+      sourceEdge = this.getEdgePoint(source, angleToTarget);
+
+      // Clamp target point to edge of target node
+      targetEdge = this.clampToNodeEdge(target, targetPoint);
+    } else {
+      // Auto-calculate: use center-to-center direction
+      const angle = Math.atan2(ty - sy, tx - sx);
+      sourceEdge = this.getEdgePoint(source, angle);
+      targetEdge = this.getEdgePoint(target, angle + Math.PI);
+    }
+
+    // Use stored source attachment point if available
+    if (connection.source_attach_x != null && connection.source_attach_y != null) {
+      const sourcePoint = {
+        x: source.x + connection.source_attach_x,
+        y: source.y + connection.source_attach_y
+      };
+      sourceEdge = this.clampToNodeEdge(source, sourcePoint);
+    }
 
     return `M ${sourceEdge.x} ${sourceEdge.y} L ${targetEdge.x} ${targetEdge.y}`;
+  }
+
+  // Clamp a point to the edge of a node (finds the closest point on the edge)
+  clampToNodeEdge(node, point) {
+    const cx = node.x + (node.width || 150) / 2;
+    const cy = node.y + (node.height || 60) / 2;
+
+    // Calculate angle from center to the point
+    const angle = Math.atan2(point.y - cy, point.x - cx);
+
+    // Get the edge point at this angle
+    return this.getEdgePoint(node, angle);
   }
 
   getEdgePoint(node, angle) {
@@ -1002,6 +1041,9 @@ export class BibMapCanvas {
     const sx = sourceNode.x + (sourceNode.width || 150) / 2;
     const sy = sourceNode.y + (sourceNode.height || 60) / 2;
 
+    // Track the last mouse position for calculating attachment point
+    this.lastDragMousePos = { x: sx, y: sy };
+
     // Create temporary drag line
     this.dragLine = this.connectionsLayer.append('path')
       .attr('class', 'drag-connection-line')
@@ -1017,6 +1059,7 @@ export class BibMapCanvas {
       if (!self.dragConnecting || !self.dragLine) return;
 
       const [mx, my] = d3.pointer(event, self.nodesLayer.node());
+      self.lastDragMousePos = { x: mx, y: my };
       self.dragLine.attr('d', `M ${sx} ${sy} L ${mx} ${my}`);
     });
 
@@ -1026,7 +1069,11 @@ export class BibMapCanvas {
       event.stopPropagation();
 
       if (d.id !== sourceNode.id) {
-        self.createConnection(sourceNode.id, d.id);
+        // Calculate attachment point relative to target node position
+        const targetAttachX = self.lastDragMousePos.x - d.x;
+        const targetAttachY = self.lastDragMousePos.y - d.y;
+
+        self.createConnectionWithAttachment(sourceNode.id, d.id, targetAttachX, targetAttachY);
       }
       self.cancelDragConnection();
     });
@@ -1103,6 +1150,23 @@ export class BibMapCanvas {
         bibmap_id: this.bibmapId,
         source_node_id: sourceId,
         target_node_id: targetId
+      });
+      this.connections.push(connection);
+      this.renderConnections();
+      this.announce('Connection created.');
+    } catch (err) {
+      this.announce(`Error: ${err.message}`);
+    }
+  }
+
+  async createConnectionWithAttachment(sourceId, targetId, targetAttachX, targetAttachY) {
+    try {
+      const connection = await api.connections.create({
+        bibmap_id: this.bibmapId,
+        source_node_id: sourceId,
+        target_node_id: targetId,
+        target_attach_x: targetAttachX,
+        target_attach_y: targetAttachY
       });
       this.connections.push(connection);
       this.renderConnections();

@@ -1,50 +1,54 @@
 # BibMap - Task Notes
 
 ## Current State
-All primary goals from the initial task list are now **complete**. The app is fully functional with publishing, preview mode, and link-to-references features.
-
-## Completed Features (This Iteration)
-- **Published/Unpublished status**: Mind maps now have `is_published` boolean field
-- **Publish toggle**: Checkbox in editor toolbar to publish/unpublish maps
-- **Copy link button**: Appears when map is published; copies shareable URL to clipboard
-- **Preview mode**: Button in toolbar to view map as read-only (hides edit controls)
-- **Link Node to References toggle**: Checkbox in node properties panel (default enabled) with "View All References" button that opens a modal with aggregated references
-
-## Key Implementation Details
-
-### Publishing System
-- Backend: `MindMap.is_published` field in `backend/app/models/models.py:30`
-- Endpoints: `/api/mindmaps/{id}/publish`, `/api/mindmaps/{id}/unpublish`, `/api/mindmaps/public/{id}`
-- Public endpoint allows unauthenticated access to published maps only
-
-### Preview Mode
-- Frontend-only feature in `frontend/src/main.js` functions `enterPreviewMode()` and `exitPreviewMode()`
-- Hides edit controls (Add Node, Connect, Publish toggle)
-- Sets canvas to read-only mode via `mindmapCanvas.setReadOnly(true)`
-
-### Link Node to References
-- Backend: `Node.link_to_references` field in `backend/app/models/models.py:58`
-- Frontend: Toggle in properties panel, "View All References" button opens `node-refs-modal`
-- References are fetched via existing `/api/nodes/{id}/references` endpoint
+All 144 tests pass (14 new media tests added). Media section, tagged media display, and auth toggle have been implemented.
 
 ## Quick Commands
 ```bash
-# Local dev (hot reload)
-docker-compose up --build
+# Start development environment
+docker-compose up --build -d
 
-# Production image
-docker build -t bibmap .
-docker run -p 8000:8000 -v ./data:/data bibmap
-
-# Run tests
+# Run all tests (144 tests)
 docker-compose -f docker-compose.test.yml run --rm backend-test
-docker-compose -f docker-compose.test.yml run --rm frontend-test
+
+# Run database migration (backs up DB first)
+python scripts/migrate_user_ids.py --db-path data/bibmap.db
 ```
 
-## Remaining Work
-No remaining tasks from the primary goal list. All features have been implemented.
+## Recently Completed
+- **Media section** - Users can add link/title pairs with optional descriptions and tag support
+  - New `Media` model and `media_taxonomies` association table
+  - Full CRUD API at `/api/media`
+  - Frontend section with filtering, sorting, and pagination
+  - Media can be tagged like references
+- **Tagged media on node pages** - Node references page now shows both references AND media that share the node's tags
+  - Added `/api/nodes/{id}/media` endpoint
+  - Node page displays "References (n)" and "Media (n)" sections
+- **Login/Logout toggle** - Auth button is now a true toggle (only Login or Logout shows, never both)
 
-Potential future enhancements (not in original scope):
-- Actual shareable URL route (e.g., `/share/{id}`) that renders the public view
-- Email/social sharing options
-- User authentication improvements
+## Remaining Work
+The original goals have been completed:
+- ✅ Connector attachment points
+- ✅ Media section with link/title pairs and tagging
+- ✅ Tagged media display inline with references
+- ✅ Login/Logout button toggle
+- ✅ Rate limiting for production (was already implemented)
+
+## Key Files Modified (Media Feature)
+- `backend/app/models/models.py` - Added Media model and media_taxonomies table
+- `backend/app/schemas.py` - Added MediaBase, MediaCreate, MediaUpdate, Media schemas
+- `backend/app/routers/media.py` - New router with CRUD endpoints
+- `backend/app/routers/nodes.py` - Added `/api/nodes/{id}/media` endpoint
+- `frontend/src/services/api.js` - Added media API methods
+- `frontend/src/main.js` - Added media section UI logic
+- `frontend/index.html` - Added media section and modal
+- `backend/tests/test_media.py` - New test file with 14 tests
+
+## Architecture Notes
+- SQLite database at `data/bibmap.db`
+- Frontend: Vite + Vanilla JS, served via nginx
+- Backend: FastAPI + SQLAlchemy
+- Auth: Bearer token, HTTP-only cookie, or Azure Easy Auth headers
+- First user becomes admin
+- Dark theme support through CSS variables
+- Rate limiting: Set `RATE_LIMIT_ENABLED=true` in production

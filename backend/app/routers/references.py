@@ -1,30 +1,34 @@
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from ..database import get_db
-from ..models.models import Reference, Taxonomy
+from ..models.models import Reference, Taxonomy, User, UserRole
 from .. import schemas
 from ..services.bibtex_parser import parse_bibtex
+from ..auth import get_current_user, check_ownership
 
 router = APIRouter(prefix="/api/references", tags=["references"])
-
-
-def get_user_id(x_ms_client_principal_id: Optional[str] = Header(None)) -> Optional[str]:
-    """Extract user ID from Azure Easy Auth header."""
-    return x_ms_client_principal_id
 
 
 @router.get("/", response_model=List[schemas.Reference])
 def list_references(
     taxonomy_id: Optional[int] = None,
-    user_id: Optional[str] = Depends(get_user_id),
+    user: Optional[User] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """List all references, optionally filtered by taxonomy."""
     query = db.query(Reference)
 
-    if user_id:
-        query = query.filter(Reference.user_id == user_id)
+    if user:
+        if user.role == UserRole.ADMIN:
+            # Admins can see all references
+            pass
+        else:
+            # Regular users see only their own
+            query = query.filter(Reference.user_id == user.id)
+    else:
+        # Anonymous/local mode: show references without owner
+        query = query.filter(Reference.user_id == None)
 
     if taxonomy_id:
         query = query.join(Reference.taxonomies).filter(Taxonomy.id == taxonomy_id)
@@ -35,7 +39,7 @@ def list_references(
 @router.post("/", response_model=schemas.Reference, status_code=201)
 def create_reference(
     reference: schemas.ReferenceCreate,
-    user_id: Optional[str] = Depends(get_user_id),
+    user: Optional[User] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Create a new reference."""
@@ -61,7 +65,7 @@ def create_reference(
         abstract=reference.abstract,
         raw_bibtex=reference.raw_bibtex,
         extra_fields=reference.extra_fields,
-        user_id=user_id
+        user_id=user.id if user else None
     )
 
     # Add taxonomies if specified
@@ -78,7 +82,7 @@ def create_reference(
 @router.post("/import", response_model=schemas.BibTeXImportResult)
 def import_bibtex(
     bibtex_import: schemas.BibTeXImport,
-    user_id: Optional[str] = Depends(get_user_id),
+    user: Optional[User] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Import references from BibTeX content."""
@@ -121,7 +125,7 @@ def import_bibtex(
                 abstract=entry.get('abstract'),
                 raw_bibtex=entry['raw_bibtex'],
                 extra_fields=entry.get('extra_fields'),
-                user_id=user_id
+                user_id=user.id if user else None
             )
             db_reference.taxonomies = taxonomies
             db.add(db_reference)
@@ -142,14 +146,14 @@ def import_bibtex(
 @router.get("/{reference_id}", response_model=schemas.Reference)
 def get_reference(
     reference_id: int,
-    user_id: Optional[str] = Depends(get_user_id),
+    user: Optional[User] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get a specific reference."""
     reference = db.query(Reference).filter(Reference.id == reference_id).first()
     if not reference:
         raise HTTPException(status_code=404, detail="Reference not found")
-    if user_id and reference.user_id and reference.user_id != user_id:
+    if not check_ownership(user, reference.user_id):
         raise HTTPException(status_code=403, detail="Access denied")
     return reference
 
@@ -158,14 +162,14 @@ def get_reference(
 def update_reference(
     reference_id: int,
     reference_update: schemas.ReferenceUpdate,
-    user_id: Optional[str] = Depends(get_user_id),
+    user: Optional[User] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Update a reference."""
     reference = db.query(Reference).filter(Reference.id == reference_id).first()
     if not reference:
         raise HTTPException(status_code=404, detail="Reference not found")
-    if user_id and reference.user_id and reference.user_id != user_id:
+    if not check_ownership(user, reference.user_id):
         raise HTTPException(status_code=403, detail="Access denied")
 
     update_data = reference_update.model_dump(exclude_unset=True)
@@ -189,14 +193,14 @@ def update_reference(
 def update_reference_from_bibtex(
     reference_id: int,
     bibtex_update: schemas.BibTeXUpdate,
-    user_id: Optional[str] = Depends(get_user_id),
+    user: Optional[User] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Update a reference by parsing new BibTeX content."""
     reference = db.query(Reference).filter(Reference.id == reference_id).first()
     if not reference:
         raise HTTPException(status_code=404, detail="Reference not found")
-    if user_id and reference.user_id and reference.user_id != user_id:
+    if not check_ownership(user, reference.user_id):
         raise HTTPException(status_code=403, detail="Access denied")
 
     # Parse the new BibTeX
@@ -237,14 +241,14 @@ def update_reference_from_bibtex(
 @router.delete("/{reference_id}", status_code=204)
 def delete_reference(
     reference_id: int,
-    user_id: Optional[str] = Depends(get_user_id),
+    user: Optional[User] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Delete a reference."""
     reference = db.query(Reference).filter(Reference.id == reference_id).first()
     if not reference:
         raise HTTPException(status_code=404, detail="Reference not found")
-    if user_id and reference.user_id and reference.user_id != user_id:
+    if not check_ownership(user, reference.user_id):
         raise HTTPException(status_code=403, detail="Access denied")
 
     db.delete(reference)
