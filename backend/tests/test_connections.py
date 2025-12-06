@@ -79,3 +79,45 @@ def test_delete_connection(client, bibmap_with_nodes):
 
     response = client.delete(f"/api/connections/{conn_id}")
     assert response.status_code == 204
+
+
+def test_create_connection_with_attachment_points(client, bibmap_with_nodes):
+    """Test creating a connection with custom attachment points."""
+    data = bibmap_with_nodes
+    response = client.post("/api/connections/", json={
+        "bibmap_id": data["bibmap"]["id"],
+        "source_node_id": data["node1"]["id"],
+        "target_node_id": data["node2"]["id"],
+        "target_attach_x": 75.0,
+        "target_attach_y": 30.0
+    })
+    assert response.status_code == 201
+    conn = response.json()
+    assert conn["source_node_id"] == data["node1"]["id"]
+    assert conn["target_node_id"] == data["node2"]["id"]
+    assert conn["target_attach_x"] == 75.0
+    assert conn["target_attach_y"] == 30.0
+
+
+def test_update_connection_attachment_points(client, bibmap_with_nodes):
+    """Test updating attachment points on an existing connection."""
+    data = bibmap_with_nodes
+    create_resp = client.post("/api/connections/", json={
+        "bibmap_id": data["bibmap"]["id"],
+        "source_node_id": data["node1"]["id"],
+        "target_node_id": data["node2"]["id"]
+    })
+    conn_id = create_resp.json()["id"]
+
+    response = client.put(f"/api/connections/{conn_id}", json={
+        "source_attach_x": 150.0,
+        "source_attach_y": 30.0,
+        "target_attach_x": 0.0,
+        "target_attach_y": 30.0
+    })
+    assert response.status_code == 200
+    conn = response.json()
+    assert conn["source_attach_x"] == 150.0
+    assert conn["source_attach_y"] == 30.0
+    assert conn["target_attach_x"] == 0.0
+    assert conn["target_attach_y"] == 30.0

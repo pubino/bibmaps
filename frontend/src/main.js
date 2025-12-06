@@ -13,6 +13,7 @@ import {
 let currentSection = 'bibmaps';
 let bibmapCanvas = null;
 let currentBibmap = null;
+let activeBibmap = null; // The BibMap that remains "active" even when navigating to other pages
 let taxonomies = [];
 let editingTaxonomyId = null;
 let editingBibmapId = null;
@@ -38,23 +39,48 @@ let filteredTaxonomies = [];
 let taxNameFilter = '';
 let taxSortBy = 'created-desc';
 
+// Media pagination and filter state
+let allMedia = [];
+let filteredMedia = [];
+let mediaCurrentPage = 1;
+let mediaPageSize = 20;
+let mediaTitleFilter = '';
+let mediaTaxonomyFilter = '';
+let mediaSortBy = 'created-desc';
+let currentMediaId = null;
+let editingMediaId = null;
+let mediaSelectedTags = [];
+
 // Confirmation modal resolver
 let confirmResolver = null;
+
+// Current user state
+let currentUser = null;
+
+// Legend state
+let showLegend = false;
+let legendLabels = {}; // Maps background color -> user-defined label
 
 // DOM Elements
 const sections = {
   bibmaps: document.getElementById('bibmaps-section'),
   editor: document.getElementById('editor-section'),
   references: document.getElementById('references-section'),
+  media: document.getElementById('media-section'),
   taxonomies: document.getElementById('taxonomies-section'),
   nodeRefs: document.getElementById('node-refs-section'),
+  settings: document.getElementById('settings-section'),
+  admin: document.getElementById('admin-section'),
   about: document.getElementById('about-section')
 };
 
 const navButtons = {
   bibmaps: document.getElementById('nav-bibmaps'),
   references: document.getElementById('nav-references'),
+  media: document.getElementById('nav-media'),
   taxonomies: document.getElementById('nav-taxonomies'),
+  settings: document.getElementById('nav-settings'),
+  admin: document.getElementById('nav-admin'),
   about: document.getElementById('nav-about')
 };
 
@@ -83,6 +109,58 @@ function showSection(sectionId) {
   });
 
   currentSection = sectionId;
+
+  // Update page titles when section changes
+  updatePageTitles();
+}
+
+// Set the active BibMap and update UI
+function setActiveBibmap(bibmap) {
+  activeBibmap = bibmap;
+  updatePageTitles();
+  updateCloseActiveBibmapButtons();
+}
+
+// Close the active BibMap and update UI
+function closeActiveBibmap() {
+  activeBibmap = null;
+  currentBibmap = null;
+  updatePageTitles();
+  updateCloseActiveBibmapButtons();
+  announce('BibMap closed');
+}
+
+// Update page titles based on active BibMap
+function updatePageTitles() {
+  const referencesHeading = document.getElementById('references-heading');
+  const mediaHeading = document.getElementById('media-heading');
+  const taxonomiesHeading = document.getElementById('taxonomies-heading');
+
+  if (activeBibmap) {
+    referencesHeading.textContent = `Academic References for ${activeBibmap.title}`;
+    mediaHeading.textContent = `Media Links for ${activeBibmap.title}`;
+    taxonomiesHeading.textContent = `Tags for ${activeBibmap.title}`;
+  } else {
+    referencesHeading.textContent = 'All Academic References';
+    mediaHeading.textContent = 'All Media Links';
+    taxonomiesHeading.textContent = 'All Tags';
+  }
+}
+
+// Update "Close Active BibMap" buttons - show name and gray out when no BibMap is active
+function updateCloseActiveBibmapButtons() {
+  const closeButtons = document.querySelectorAll('.close-active-bibmap-btn');
+  closeButtons.forEach(btn => {
+    // Always show the button, but disable when no active BibMap
+    btn.hidden = false;
+    if (activeBibmap) {
+      btn.disabled = false;
+      btn.innerHTML = `&times; Close ${activeBibmap.title}`;
+    } else {
+      btn.disabled = true;
+      btn.innerHTML = '&times; Close BibMap';
+    }
+  });
 }
 
 function openModal(modalId) {
@@ -104,6 +182,9 @@ function closeAllModals() {
   }
 }
 
+// Alias for consistency
+const closeModal = closeAllModals;
+
 function showConfirm(message, title = 'Confirm', actionLabel = 'Delete') {
   return new Promise((resolve) => {
     confirmResolver = resolve;
@@ -122,14 +203,478 @@ function formatDate(dateStr) {
 async function loadUserInfo() {
   try {
     const user = await api.user();
-    const userInfo = document.getElementById('user-info');
-    if (user.authenticated) {
-      userInfo.textContent = `Signed in as ${user.user_name || 'User'}`;
-    } else {
-      userInfo.textContent = 'Not signed in (local mode)';
-    }
+    currentUser = user.authenticated ? user : null;
+    updateAuthUI();
   } catch (err) {
     console.error('Failed to load user:', err);
+    currentUser = null;
+    updateAuthUI();
+  }
+}
+
+// Update UI based on auth state
+function updateAuthUI() {
+  const userInfo = document.getElementById('user-info');
+  const authToggleBtn = document.getElementById('auth-toggle-btn');
+  const registerBtn = document.getElementById('register-btn');
+  const profileBtn = document.getElementById('profile-btn');
+  const adminNav = document.getElementById('nav-admin');
+  const settingsNav = document.getElementById('nav-settings');
+
+  if (currentUser) {
+    userInfo.textContent = `Signed in as ${currentUser.user_name || currentUser.username || 'User'}`;
+    authToggleBtn.textContent = 'Logout';
+    authToggleBtn.classList.remove('btn-secondary');
+    authToggleBtn.classList.add('btn-primary');
+    // Hide Register when logged in - Login/Logout is a toggle
+    registerBtn.hidden = true;
+    profileBtn.hidden = false;
+    settingsNav.hidden = false;
+
+    // Show admin nav if user is admin
+    if (currentUser.is_admin) {
+      adminNav.hidden = false;
+    } else {
+      adminNav.hidden = true;
+    }
+  } else {
+    userInfo.textContent = 'Not signed in (local mode)';
+    authToggleBtn.textContent = 'Login';
+    authToggleBtn.classList.remove('btn-primary');
+    authToggleBtn.classList.add('btn-secondary');
+    // Keep Register hidden - users access registration through the Login modal
+    // This makes Login/Logout a true toggle button
+    registerBtn.hidden = true;
+    profileBtn.hidden = true;
+    adminNav.hidden = true;
+    settingsNav.hidden = true;
+  }
+}
+
+// Google OAuth state
+let googleOAuthEnabled = false;
+
+// Check if Google OAuth is available
+async function checkGoogleOAuth() {
+  try {
+    const result = await api.auth.googleEnabled();
+    googleOAuthEnabled = result.enabled;
+    // Show/hide Google OAuth buttons
+    document.getElementById('login-google-section').hidden = !googleOAuthEnabled;
+    document.getElementById('register-google-section').hidden = !googleOAuthEnabled;
+  } catch (err) {
+    console.log('Google OAuth not available');
+    googleOAuthEnabled = false;
+  }
+}
+
+// Handle OAuth errors from URL params
+function handleOAuthErrors() {
+  const params = new URLSearchParams(window.location.search);
+  const error = params.get('error');
+  if (error) {
+    let message = 'Login failed';
+    switch (error) {
+      case 'google_oauth_error':
+        message = params.get('message') || 'Google authentication failed';
+        break;
+      case 'invalid_state':
+        message = 'Session expired. Please try again.';
+        break;
+      case 'account_disabled':
+        message = 'Your account has been disabled.';
+        break;
+      case 'token_exchange_failed':
+        message = 'Failed to verify with Google. Please try again.';
+        break;
+      default:
+        message = 'Authentication failed. Please try again.';
+    }
+    announce(message);
+    // Clean up URL
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }
+}
+
+// Auth modal functions
+function showLoginModal() {
+  document.getElementById('login-error').hidden = true;
+  document.getElementById('login-form').reset();
+  openModal('login-modal');
+}
+
+function showRegisterModal() {
+  document.getElementById('register-error').hidden = true;
+  document.getElementById('register-form').reset();
+  openModal('register-modal');
+}
+
+function showProfileModal() {
+  if (!currentUser) return;
+  document.getElementById('profile-error').hidden = true;
+  document.getElementById('password-error').hidden = true;
+  document.getElementById('profile-email').value = currentUser.email || '';
+  document.getElementById('profile-display-name').value = currentUser.user_name || '';
+  document.getElementById('profile-username').textContent = currentUser.username || '';
+  document.getElementById('profile-role').textContent = currentUser.role === 'admin' ? 'Administrator' : 'Standard User';
+  document.getElementById('change-password-form').reset();
+  openModal('profile-modal');
+}
+
+async function handleLogin(e) {
+  e.preventDefault();
+  const username = document.getElementById('login-username').value;
+  const password = document.getElementById('login-password').value;
+  const errorEl = document.getElementById('login-error');
+
+  try {
+    await api.auth.login(username, password);
+    closeModal();
+    await loadUserInfo();
+    await loadSettings();
+    await loadBibMaps();
+    await loadReferences();
+    await loadTaxonomies();
+    announce('Logged in successfully');
+  } catch (err) {
+    errorEl.textContent = err.message;
+    errorEl.hidden = false;
+  }
+}
+
+async function handleRegister(e) {
+  e.preventDefault();
+  const email = document.getElementById('register-email').value;
+  const username = document.getElementById('register-username').value;
+  const displayName = document.getElementById('register-display-name').value;
+  const password = document.getElementById('register-password').value;
+  const confirmPassword = document.getElementById('register-confirm-password').value;
+  const errorEl = document.getElementById('register-error');
+
+  if (password !== confirmPassword) {
+    errorEl.textContent = 'Passwords do not match';
+    errorEl.hidden = false;
+    return;
+  }
+
+  try {
+    await api.auth.register({
+      email,
+      username,
+      display_name: displayName || username,
+      password
+    });
+    // Auto-login after registration
+    await api.auth.login(username, password);
+    closeModal();
+    await loadUserInfo();
+    await loadSettings();
+    await loadBibMaps();
+    await loadReferences();
+    await loadTaxonomies();
+    announce('Account created and logged in');
+  } catch (err) {
+    errorEl.textContent = err.message;
+    errorEl.hidden = false;
+  }
+}
+
+async function handleLogout() {
+  try {
+    await api.auth.logout();
+    currentUser = null;
+    updateAuthUI();
+    await loadBibMaps();
+    await loadReferences();
+    await loadTaxonomies();
+    showSection('bibmaps');
+    announce('Logged out successfully');
+  } catch (err) {
+    announce(`Logout failed: ${err.message}`);
+  }
+}
+
+async function handleProfileUpdate(e) {
+  e.preventDefault();
+  const email = document.getElementById('profile-email').value;
+  const displayName = document.getElementById('profile-display-name').value;
+  const errorEl = document.getElementById('profile-error');
+
+  try {
+    await api.auth.updateProfile({ email, display_name: displayName });
+    await loadUserInfo();
+    closeModal();
+    announce('Profile updated');
+  } catch (err) {
+    errorEl.textContent = err.message;
+    errorEl.hidden = false;
+  }
+}
+
+async function handlePasswordChange(e) {
+  e.preventDefault();
+  const currentPassword = document.getElementById('current-password').value;
+  const newPassword = document.getElementById('new-password').value;
+  const confirmPassword = document.getElementById('confirm-new-password').value;
+  const errorEl = document.getElementById('password-error');
+
+  if (newPassword !== confirmPassword) {
+    errorEl.textContent = 'New passwords do not match';
+    errorEl.hidden = false;
+    return;
+  }
+
+  try {
+    await api.auth.changePassword(currentPassword, newPassword);
+    document.getElementById('change-password-form').reset();
+    errorEl.hidden = true;
+    announce('Password changed successfully');
+  } catch (err) {
+    errorEl.textContent = err.message;
+    errorEl.hidden = false;
+  }
+}
+
+// Admin user management
+let allUsers = [];
+let editingUserId = null;
+
+async function loadUsers() {
+  try {
+    const search = document.getElementById('user-search')?.value || '';
+    allUsers = await api.auth.listUsers(0, 100, search || null);
+    renderUsersList();
+  } catch (err) {
+    announce(`Error loading users: ${err.message}`);
+  }
+}
+
+function renderUsersList() {
+  const container = document.getElementById('users-list');
+  if (!container) return;
+
+  if (allUsers.length === 0) {
+    container.innerHTML = '<p class="empty-message">No users found</p>';
+    return;
+  }
+
+  container.innerHTML = allUsers.map(user => `
+    <div class="card user-card" role="listitem" data-user-id="${user.id}">
+      <div class="card-header">
+        <h3 class="card-title">${escapeHtml(user.display_name || user.username)}</h3>
+        <span class="badge ${user.role === 'admin' ? 'badge-admin' : 'badge-user'}">${user.role}</span>
+      </div>
+      <p class="card-meta">@${escapeHtml(user.username)}</p>
+      <p class="card-meta">${escapeHtml(user.email)}</p>
+      <p class="card-meta ${user.is_active ? '' : 'text-danger'}">${user.is_active ? 'Active' : 'Inactive'}</p>
+      <div class="card-actions">
+        <button class="btn-secondary btn-sm edit-user-btn">Edit</button>
+        ${user.id !== currentUser?.user_id ? '<button class="btn-danger btn-sm delete-user-btn">Delete</button>' : ''}
+      </div>
+    </div>
+  `).join('');
+
+  // Add event listeners
+  container.querySelectorAll('.edit-user-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const userId = e.target.closest('.user-card').dataset.userId;
+      openEditUserModal(parseInt(userId));
+    });
+  });
+
+  container.querySelectorAll('.delete-user-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const userId = e.target.closest('.user-card').dataset.userId;
+      const user = allUsers.find(u => u.id === parseInt(userId));
+      if (user && await showConfirm(`Delete user "${user.username}"? This will also delete all their data.`)) {
+        try {
+          await api.auth.deleteUser(userId);
+          await loadUsers();
+          announce('User deleted');
+        } catch (err) {
+          announce(`Error deleting user: ${err.message}`);
+        }
+      }
+    });
+  });
+}
+
+function openCreateUserModal() {
+  editingUserId = null;
+  document.getElementById('user-modal-title').textContent = 'Create User';
+  document.getElementById('user-submit-btn').textContent = 'Create';
+  document.getElementById('user-form').reset();
+  document.getElementById('user-password').required = true;
+  document.getElementById('user-password-group').querySelector('label').textContent = 'Password:';
+  document.getElementById('user-error').hidden = true;
+  document.getElementById('user-active').checked = true;
+  openModal('user-modal');
+}
+
+function openEditUserModal(userId) {
+  const user = allUsers.find(u => u.id === userId);
+  if (!user) return;
+
+  editingUserId = userId;
+  document.getElementById('user-modal-title').textContent = 'Edit User';
+  document.getElementById('user-submit-btn').textContent = 'Save';
+  document.getElementById('user-email').value = user.email;
+  document.getElementById('user-username').value = user.username;
+  document.getElementById('user-display-name').value = user.display_name || '';
+  document.getElementById('user-password').value = '';
+  document.getElementById('user-password').required = false;
+  document.getElementById('user-password-group').querySelector('label').textContent = 'New Password (leave blank to keep):';
+  document.getElementById('user-role').value = user.role;
+  document.getElementById('user-active').checked = user.is_active;
+  document.getElementById('user-error').hidden = true;
+  openModal('user-modal');
+}
+
+async function handleUserFormSubmit(e) {
+  e.preventDefault();
+  const errorEl = document.getElementById('user-error');
+  const email = document.getElementById('user-email').value;
+  const username = document.getElementById('user-username').value;
+  const displayName = document.getElementById('user-display-name').value;
+  const password = document.getElementById('user-password').value;
+  const role = document.getElementById('user-role').value;
+  const isActive = document.getElementById('user-active').checked;
+
+  try {
+    if (editingUserId) {
+      // Update existing user
+      const updateData = {
+        email,
+        username,
+        display_name: displayName || username,
+        role,
+        is_active: isActive
+      };
+      await api.auth.updateUser(editingUserId, updateData);
+
+      // Reset password if provided
+      if (password) {
+        await api.auth.resetPassword(editingUserId, password);
+      }
+      announce('User updated');
+    } else {
+      // Create new user
+      await api.auth.createUser({
+        email,
+        username,
+        display_name: displayName || username,
+        password,
+        role,
+        is_active: isActive
+      });
+      announce('User created');
+    }
+    closeModal();
+    await loadUsers();
+  } catch (err) {
+    errorEl.textContent = err.message;
+    errorEl.hidden = false;
+  }
+}
+
+// User Settings
+let userSettings = null;
+
+async function loadSettings() {
+  if (!currentUser) return;
+
+  try {
+    userSettings = await api.settings.get();
+    applySettings();
+    populateSettingsForm();
+  } catch (err) {
+    console.error('Failed to load settings:', err);
+  }
+}
+
+function applySettings() {
+  if (!userSettings) return;
+
+  // Apply theme
+  applyTheme(userSettings.theme);
+
+  // Apply references defaults
+  refsPageSize = userSettings.default_refs_page_size || 20;
+  refsSortBy = userSettings.default_refs_sort || 'imported-desc';
+
+  // Update page size select if on references page
+  const pageSizeSelect = document.getElementById('ref-page-size');
+  if (pageSizeSelect) {
+    pageSizeSelect.value = refsPageSize;
+  }
+  const sortSelect = document.getElementById('ref-sort');
+  if (sortSelect) {
+    sortSelect.value = refsSortBy;
+  }
+}
+
+function applyTheme(theme) {
+  const root = document.documentElement;
+
+  if (theme === 'dark') {
+    root.setAttribute('data-theme', 'dark');
+  } else if (theme === 'light') {
+    root.setAttribute('data-theme', 'light');
+  } else {
+    // System default - check preference
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      root.setAttribute('data-theme', 'dark');
+    } else {
+      root.removeAttribute('data-theme');
+    }
+  }
+}
+
+function populateSettingsForm() {
+  if (!userSettings) return;
+
+  document.getElementById('setting-theme').value = userSettings.theme || 'system';
+  document.getElementById('setting-node-color').value = userSettings.default_node_color || '#3B82F6';
+  document.getElementById('setting-text-color').value = userSettings.default_text_color || '#FFFFFF';
+  document.getElementById('setting-node-shape').value = userSettings.default_node_shape || 'rectangle';
+  document.getElementById('setting-snap-grid').checked = userSettings.snap_to_grid || false;
+  document.getElementById('setting-grid-size').value = userSettings.grid_size || 20;
+  document.getElementById('setting-auto-save').checked = userSettings.auto_save !== false;
+  document.getElementById('setting-refs-page-size').value = userSettings.default_refs_page_size || 20;
+  document.getElementById('setting-refs-sort').value = userSettings.default_refs_sort || 'imported-desc';
+  document.getElementById('setting-email-notifications').checked = userSettings.email_notifications !== false;
+}
+
+async function updateSetting(key, value) {
+  if (!currentUser) return;
+
+  try {
+    userSettings = await api.settings.update({ [key]: value });
+    applySettings();
+    announce('Setting saved');
+  } catch (err) {
+    announce(`Error saving setting: ${err.message}`);
+  }
+}
+
+async function resetSettings() {
+  if (!currentUser) return;
+
+  const confirmed = await showConfirm(
+    'Are you sure you want to reset all settings to defaults?',
+    'Reset Settings',
+    'Reset'
+  );
+
+  if (confirmed) {
+    try {
+      userSettings = await api.settings.reset();
+      applySettings();
+      populateSettingsForm();
+      announce('Settings reset to defaults');
+    } catch (err) {
+      announce(`Error resetting settings: ${err.message}`);
+    }
   }
 }
 
@@ -229,13 +774,12 @@ function renderTaxonomiesList() {
   }
 
   container.innerHTML = tagsToRender.map(tax => `
-    <div class="card taxonomy-card" role="listitem" data-id="${tax.id}">
-      <h3><span class="tag-color-dot" style="background-color: ${tax.color}"></span>${escapeHtml(tax.name)}</h3>
-      <p>${escapeHtml(tax.description || 'No description')}</p>
-      <div class="card-footer">
-        <span>Created ${formatDate(tax.created_at)}</span>
-        <span class="edit-indicator">Click to edit</span>
-        <button class="btn-secondary delete-taxonomy" data-id="${tax.id}" data-name="${escapeHtml(tax.name)}" aria-label="Delete ${tax.name}">Delete</button>
+    <div class="card taxonomy-card taxonomy-card-compact" role="listitem" data-id="${tax.id}">
+      <div class="taxonomy-card-row">
+        <h3><span class="tag-color-dot" style="background-color: ${tax.color}"></span>${escapeHtml(tax.name)}</h3>
+        <button class="btn-icon btn-danger-icon delete-taxonomy" data-id="${tax.id}" data-name="${escapeHtml(tax.name)}" aria-label="Delete ${tax.name}" title="Delete">
+          <span aria-hidden="true">&#128465;</span>
+        </button>
       </div>
     </div>
   `).join('');
@@ -243,7 +787,7 @@ function renderTaxonomiesList() {
   // Click to edit handlers
   container.querySelectorAll('.taxonomy-card').forEach(card => {
     card.addEventListener('click', (e) => {
-      if (!e.target.classList.contains('delete-taxonomy')) {
+      if (!e.target.closest('.delete-taxonomy')) {
         openEditTaxonomy(parseInt(card.dataset.id));
       }
     });
@@ -292,6 +836,181 @@ function resetTaxonomyModal() {
   document.getElementById('create-taxonomy-form').reset();
   document.getElementById('tax-color').value = '#6B7280';
   document.getElementById('tax-submit-btn').textContent = 'Create';
+}
+
+// Media
+async function loadMedia(taxonomyId = null) {
+  try {
+    mediaTaxonomyFilter = taxonomyId || '';
+    allMedia = await api.media.list(taxonomyId || null);
+    applyMediaFilterAndSort();
+  } catch (err) {
+    announce(`Error loading media: ${err.message}`);
+  }
+}
+
+function applyMediaFilterAndSort() {
+  let items = [...allMedia];
+
+  // Apply title filter
+  if (mediaTitleFilter) {
+    const filter = mediaTitleFilter.toLowerCase();
+    items = items.filter(m =>
+      (m.title && m.title.toLowerCase().includes(filter)) ||
+      (m.description && m.description.toLowerCase().includes(filter))
+    );
+  }
+
+  // Apply sorting
+  items = sortMedia(items, mediaSortBy);
+
+  filteredMedia = items;
+
+  // Reset to page 1 when filters change
+  const maxPage = Math.ceil(filteredMedia.length / mediaPageSize) || 1;
+  if (mediaCurrentPage > maxPage) {
+    mediaCurrentPage = 1;
+  }
+
+  renderMediaList();
+}
+
+function sortMedia(items, sortBy) {
+  const sorted = [...items];
+
+  switch (sortBy) {
+    case 'created-desc':
+      sorted.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      break;
+    case 'created-asc':
+      sorted.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+      break;
+    case 'title-asc':
+      sorted.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+      break;
+    case 'title-desc':
+      sorted.sort((a, b) => (b.title || '').localeCompare(a.title || ''));
+      break;
+  }
+
+  return sorted;
+}
+
+function renderMediaList() {
+  const container = document.getElementById('media-list');
+  const totalItems = filteredMedia.length;
+  const totalPages = Math.ceil(totalItems / mediaPageSize) || 1;
+
+  // Ensure current page is valid
+  if (mediaCurrentPage < 1) mediaCurrentPage = 1;
+  if (mediaCurrentPage > totalPages) mediaCurrentPage = totalPages;
+
+  // Calculate pagination
+  const startIdx = (mediaCurrentPage - 1) * mediaPageSize;
+  const endIdx = Math.min(startIdx + mediaPageSize, totalItems);
+  const pageItems = filteredMedia.slice(startIdx, endIdx);
+
+  if (totalItems === 0) {
+    container.innerHTML = '<p>No media found. Click "Add Media" to add your first link!</p>';
+  } else {
+    container.innerHTML = pageItems.map(m => `
+      <article class="reference-card media-card" role="listitem" data-id="${m.id}">
+        <h3>${escapeHtml(m.title)}</h3>
+        <p class="meta"><a href="${escapeHtml(m.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(m.url)}</a></p>
+        ${m.description ? `<p class="description">${escapeHtml(m.description)}</p>` : ''}
+        <div class="tags">
+          ${m.taxonomies?.map(t => `
+            <span class="tag" style="background: ${t.color}; color: white;">${escapeHtml(t.name)}</span>
+          `).join('') || ''}
+        </div>
+        <p class="meta">Added ${formatDate(m.created_at)}</p>
+      </article>
+    `).join('');
+
+    // Click handlers
+    container.querySelectorAll('.media-card').forEach(card => {
+      card.addEventListener('click', (e) => {
+        // Don't open modal if clicking a link
+        if (e.target.tagName === 'A') return;
+        openMediaModal(parseInt(card.dataset.id));
+      });
+    });
+  }
+
+  // Update pagination UI
+  updateMediaPaginationUI(totalItems, totalPages, startIdx, endIdx);
+}
+
+function updateMediaPaginationUI(totalItems, totalPages, startIdx, endIdx) {
+  const info = document.getElementById('media-pagination-info');
+  const pageIndicator = document.getElementById('media-page-indicator');
+  const prevBtn = document.getElementById('media-prev-page');
+  const nextBtn = document.getElementById('media-next-page');
+
+  if (totalItems === 0) {
+    info.textContent = 'No media';
+  } else {
+    info.textContent = `Showing ${startIdx + 1}-${endIdx} of ${totalItems} media`;
+  }
+
+  pageIndicator.textContent = `Page ${mediaCurrentPage} of ${totalPages}`;
+  prevBtn.disabled = mediaCurrentPage <= 1;
+  nextBtn.disabled = mediaCurrentPage >= totalPages;
+}
+
+function openMediaModal(mediaId = null) {
+  const modal = document.getElementById('media-modal');
+
+  if (mediaId) {
+    // Edit mode
+    const media = allMedia.find(m => m.id === mediaId);
+    if (!media) return;
+
+    editingMediaId = mediaId;
+    document.getElementById('media-modal-title').textContent = 'Edit Media';
+    document.getElementById('media-title').value = media.title;
+    document.getElementById('media-url').value = media.url;
+    document.getElementById('media-description').value = media.description || '';
+    document.getElementById('media-submit-btn').textContent = 'Save';
+    document.getElementById('delete-media-btn').hidden = false;
+
+    // Set up tags
+    mediaSelectedTags = media.taxonomies ? media.taxonomies.map(t => ({ id: t.id, name: t.name, color: t.color })) : [];
+    // Set up legend category
+    populateLegendCategorySelect('media-legend-category', media.legend_category);
+  } else {
+    // Create mode
+    editingMediaId = null;
+    document.getElementById('media-modal-title').textContent = 'Add Media';
+    document.getElementById('media-form').reset();
+    document.getElementById('media-submit-btn').textContent = 'Add';
+    document.getElementById('delete-media-btn').hidden = true;
+    mediaSelectedTags = [];
+    // Reset legend category
+    populateLegendCategorySelect('media-legend-category');
+  }
+
+  renderSelectedTags('media');
+  openModal('media-modal');
+}
+
+function updateMediaTaxonomySelect() {
+  const select = document.getElementById('media-taxonomy-filter');
+  if (!select) return;
+
+  const currentValue = select.value;
+  select.innerHTML = '<option value="">All</option>';
+
+  taxonomies.forEach(tax => {
+    const option = document.createElement('option');
+    option.value = tax.id;
+    option.textContent = tax.name;
+    option.style.backgroundColor = tax.color;
+    if (currentValue === String(tax.id)) {
+      option.selected = true;
+    }
+    select.appendChild(option);
+  });
 }
 
 // BibMaps
@@ -379,11 +1098,21 @@ async function importBibMapFile(file) {
 
     const bibmapData = JSON.parse(await bibmapJsonFile.async('text'));
 
+    // Extract bibmap metadata (handle both old flat format and new nested format)
+    const bibmapMeta = bibmapData.bibmap || bibmapData;
+
     // Create the BibMap
-    const newBibmap = await api.bibmaps.create({
-      title: bibmapData.title + ' (imported)',
-      description: bibmapData.description || ''
+    let newBibmap = await api.bibmaps.create({
+      title: (bibmapMeta.title || 'Untitled') + ' (imported)',
+      description: bibmapMeta.description || ''
     });
+
+    // Update with settings_json if present (for legend categories)
+    if (bibmapMeta.settings_json) {
+      newBibmap = await api.bibmaps.update(newBibmap.id, {
+        settings_json: bibmapMeta.settings_json
+      });
+    }
 
     // Import references if references.bib exists
     const refsBibFile = zip.file('references.bib');
@@ -520,13 +1249,19 @@ async function openBibMapEditor(bibmapId) {
 
   try {
     currentBibmap = await bibmapCanvas.load(bibmapId);
+    setActiveBibmap(currentBibmap); // Set as active BibMap
     document.getElementById('editor-heading').textContent = currentBibmap.title;
 
     // Update publish toggle state
     const publishToggle = document.getElementById('publish-toggle');
     const copyLinkBtn = document.getElementById('copy-link');
     publishToggle.checked = currentBibmap.is_published || false;
-    copyLinkBtn.hidden = !currentBibmap.is_published;
+    copyLinkBtn.disabled = !currentBibmap.is_published;
+
+    // Load legend state from settings and update UI
+    loadLegendState();
+    document.getElementById('show-legend-toggle').checked = showLegend;
+    updateLegend();
 
     announce(`Opened BibMap: ${currentBibmap.title}`);
   } catch (err) {
@@ -581,6 +1316,292 @@ function updateToolbarButtons() {
   document.getElementById('delete-btn').disabled = !hasSelection;
 }
 
+// Legend functions
+const LEGEND_PATTERNS = ['stripes', 'dots', 'crosshatch', 'dashes', 'waves'];
+
+function getPatternForIndex(index) {
+  return LEGEND_PATTERNS[index % LEGEND_PATTERNS.length];
+}
+
+function updateLegend() {
+  const legendPanel = document.getElementById('legend-panel');
+  const legendItems = document.getElementById('legend-items');
+
+  if (!showLegend || !bibmapCanvas) {
+    legendPanel.hidden = true;
+    return;
+  }
+
+  // Collect unique background colors from nodes
+  const colorMap = new Map();
+  const nodes = bibmapCanvas.nodes || [];
+
+  nodes.forEach(node => {
+    const bgColor = (node.background_color || '#3B82F6').toUpperCase();
+    if (!colorMap.has(bgColor)) {
+      colorMap.set(bgColor, {
+        color: bgColor,
+        count: 1
+      });
+    } else {
+      colorMap.get(bgColor).count++;
+    }
+  });
+
+  // If no nodes or no unique colors, hide legend
+  if (colorMap.size === 0) {
+    legendPanel.hidden = true;
+    return;
+  }
+
+  // Sort colors by frequency (most used first)
+  const sortedColors = Array.from(colorMap.values())
+    .sort((a, b) => b.count - a.count);
+
+  // Generate placeholder labels for colors without user-defined labels
+  let categoryIndex = 1;
+  sortedColors.forEach(item => {
+    if (!legendLabels[item.color]) {
+      legendLabels[item.color] = `Category ${categoryIndex}`;
+    }
+    categoryIndex++;
+  });
+
+  // Clear and rebuild legend items
+  legendItems.innerHTML = '';
+
+  sortedColors.forEach((item, index) => {
+    const li = document.createElement('li');
+    li.className = 'legend-item';
+    li.dataset.color = item.color;
+
+    const pattern = getPatternForIndex(index);
+
+    li.innerHTML = `
+      <span class="legend-color-indicator"
+            style="background-color: ${item.color}"
+            data-pattern="${pattern}"
+            title="Pattern: ${pattern}"
+            aria-label="Color indicator with ${pattern} pattern"></span>
+      <span class="legend-label"
+            tabindex="0"
+            role="button"
+            aria-label="${legendLabels[item.color]}. Double-click to edit."
+            title="Double-click to edit">${legendLabels[item.color]}</span>
+    `;
+
+    legendItems.appendChild(li);
+  });
+
+  legendPanel.hidden = false;
+
+  // Save legend labels to bibmap
+  saveLegendLabels();
+}
+
+function saveLegendLabels() {
+  if (currentBibmap && currentBibmap.id) {
+    // Store legend labels in bibmap settings_json
+    const settings = currentBibmap.settings_json ? JSON.parse(currentBibmap.settings_json) : {};
+    settings.legendLabels = legendLabels;
+    api.bibmaps.update(currentBibmap.id, { settings_json: JSON.stringify(settings) })
+      .catch(err => console.error('Failed to save legend labels:', err));
+  }
+}
+
+function saveShowLegendState() {
+  if (currentBibmap && currentBibmap.id) {
+    const settings = currentBibmap.settings_json ? JSON.parse(currentBibmap.settings_json) : {};
+    settings.showLegend = showLegend;
+    currentBibmap.settings_json = JSON.stringify(settings);
+    api.bibmaps.update(currentBibmap.id, { settings_json: currentBibmap.settings_json })
+      .catch(err => console.error('Failed to save legend visibility:', err));
+  }
+}
+
+function loadLegendState() {
+  if (currentBibmap && currentBibmap.settings_json) {
+    try {
+      const settings = JSON.parse(currentBibmap.settings_json);
+      legendLabels = settings.legendLabels || {};
+      showLegend = settings.showLegend || false;
+    } catch (e) {
+      legendLabels = {};
+      showLegend = false;
+    }
+  } else {
+    legendLabels = {};
+    showLegend = false;
+  }
+}
+
+/**
+ * Populate a legend category select dropdown with options from legendLabels
+ * @param {string} selectId - The ID of the select element
+ * @param {string|null} currentValue - The currently selected value (a color)
+ */
+function populateLegendCategorySelect(selectId, currentValue = null) {
+  const select = document.getElementById(selectId);
+  if (!select) return;
+
+  // Find the help text associated with this select
+  const helpText = select.parentElement?.querySelector('.help-text');
+
+  // Default help texts for each select
+  const defaultHelpTexts = {
+    'import-legend-category': 'Assign all imported references to this legend category',
+    'ref-legend-category': 'Assign to a legend category to link with nodes of the same color',
+    'media-legend-category': 'Assign to a legend category to link with nodes of the same color'
+  };
+
+  // If no BibMap is open, disable the select and show message
+  if (!activeBibmap) {
+    select.innerHTML = '<option value="">None</option>';
+    select.disabled = true;
+    if (helpText) {
+      helpText.textContent = 'Open a BibMap to assign legend categories';
+    }
+    return;
+  }
+
+  // Enable select and restore appropriate help text
+  select.disabled = false;
+  if (helpText && defaultHelpTexts[selectId]) {
+    helpText.textContent = defaultHelpTexts[selectId];
+  }
+
+  // Clear existing options except the first "None" option
+  select.innerHTML = '<option value="">None</option>';
+
+  // Add options for each legend category
+  Object.entries(legendLabels).forEach(([color, label]) => {
+    const option = document.createElement('option');
+    option.value = color;
+    option.textContent = label;
+    option.style.backgroundColor = color;
+    select.appendChild(option);
+  });
+
+  // Set the current value if provided
+  if (currentValue) {
+    select.value = currentValue.toUpperCase();
+  }
+}
+
+/**
+ * Populate existing categories in the Node Properties panel
+ * @param {string|null} currentColor - The currently selected background color
+ */
+function populateExistingCategories(currentColor) {
+  const container = document.getElementById('existing-categories');
+  if (!container) return;
+
+  container.innerHTML = '';
+  const normalizedCurrent = currentColor ? currentColor.toUpperCase() : null;
+
+  // Get categories from legendLabels (which contains all used colors)
+  Object.entries(legendLabels).forEach(([color, label]) => {
+    const option = document.createElement('button');
+    option.type = 'button';
+    option.className = 'category-option';
+    if (normalizedCurrent === color.toUpperCase()) {
+      option.classList.add('selected');
+    }
+    option.dataset.color = color;
+
+    option.innerHTML = `
+      <span class="category-color-swatch" style="background-color: ${color}" title="${label}"></span>
+    `;
+
+    option.addEventListener('click', () => selectCategory(color));
+    container.appendChild(option);
+  });
+}
+
+/**
+ * Handle category selection from the existing categories list
+ * @param {string} color - The color of the selected category
+ */
+function selectCategory(color) {
+  // Update the color picker value
+  document.getElementById('prop-bg-color').value = color;
+
+  // Update visual selection state
+  document.querySelectorAll('#existing-categories .category-option').forEach(opt => {
+    opt.classList.toggle('selected', opt.dataset.color.toUpperCase() === color.toUpperCase());
+  });
+
+  // Save the background color to the node
+  saveNodeProperty('background_color', color);
+
+  // Update legend
+  updateLegend();
+
+  // Update link to references checkbox
+  updateLinkRefsCheckbox(document.getElementById('prop-link-refs').checked);
+}
+
+/**
+ * Save legend category for a reference
+ * @param {string} legendCategory - The legend category (color) or empty string for none
+ */
+async function saveReferenceLegendCategory(legendCategory) {
+  if (!currentReferenceId) return;
+
+  try {
+    await api.references.update(currentReferenceId, {
+      legend_category: legendCategory || null
+    });
+    loadReferences(); // Refresh the list
+  } catch (err) {
+    announce(`Error saving legend category: ${err.message}`);
+  }
+}
+
+function startLegendLabelEdit(labelElement, color) {
+  const currentLabel = legendLabels[color] || 'Category';
+
+  // Create input element
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'legend-label-input';
+  input.value = currentLabel;
+  input.setAttribute('aria-label', 'Edit legend label');
+
+  // Replace span with input
+  labelElement.replaceWith(input);
+  input.focus();
+  input.select();
+
+  function finishEdit() {
+    const newLabel = input.value.trim() || currentLabel;
+    legendLabels[color] = newLabel;
+
+    // Create new span to replace input
+    const span = document.createElement('span');
+    span.className = 'legend-label';
+    span.tabIndex = 0;
+    span.role = 'button';
+    span.setAttribute('aria-label', `${newLabel}. Double-click to edit.`);
+    span.title = 'Double-click to edit';
+    span.textContent = newLabel;
+
+    input.replaceWith(span);
+    saveLegendLabels();
+  }
+
+  input.addEventListener('blur', finishEdit);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      input.blur();
+    } else if (e.key === 'Escape') {
+      input.value = currentLabel;
+      input.blur();
+    }
+  });
+}
+
 function showConnectionPanel(connection) {
   const panel = document.getElementById('connection-panel');
   panel.hidden = false;
@@ -615,7 +1636,11 @@ function showPropertiesPanel(node) {
   document.getElementById('prop-label').value = node.label || '';
   document.getElementById('prop-description').value = node.description || '';
   document.getElementById('prop-bg-color').value = node.background_color || '#3B82F6';
-  document.getElementById('prop-text-color').value = node.text_color || '#FFFFFF';
+  // Populate existing categories for selection
+  populateExistingCategories(node.background_color);
+  const textColor = node.text_color || '#FFFFFF';
+  document.getElementById('prop-text-color').value = textColor;
+  document.getElementById('text-color-bar').style.backgroundColor = textColor;
   document.getElementById('prop-shape').value = node.shape || 'rectangle';
   document.getElementById('prop-node-style').value = node.node_style || 'flat';
   document.getElementById('prop-link-refs').checked = node.link_to_references !== false;
@@ -696,10 +1721,14 @@ function updateLinkRefsCheckbox(currentValue = true) {
   const checkbox = document.getElementById('prop-link-refs');
   const helpText = document.getElementById('link-refs-help');
   const hasTags = nodeSelectedTags.length > 0;
+  // Check if node has a legend category (non-default background color)
+  const bgColor = document.getElementById('prop-bg-color').value;
+  const hasLegendCategory = bgColor && bgColor.toUpperCase() !== '#3B82F6';
+  const canLink = hasTags || hasLegendCategory;
 
-  checkbox.disabled = !hasTags;
+  checkbox.disabled = !canLink;
 
-  if (hasTags) {
+  if (canLink) {
     // Enable and set to the current value (or auto-check if was disabled)
     checkbox.checked = currentValue;
     helpText.hidden = true;
@@ -715,11 +1744,16 @@ async function loadNodeReferences(nodeId, linkEnabled = true) {
   const countSpan = document.getElementById('node-refs-count');
 
   try {
-    const refs = await api.nodes.getReferences(nodeId);
-    countSpan.textContent = refs.length;
+    // Fetch both references and media counts
+    const [refs, media] = await Promise.all([
+      api.nodes.getReferences(nodeId),
+      api.nodes.getMedia(nodeId)
+    ]);
+    const totalCount = refs.length + media.length;
+    countSpan.textContent = totalCount;
 
-    // Show the link button if there are references and linking is enabled
-    container.hidden = !(refs.length > 0 && linkEnabled);
+    // Show the link button if there are references or media and linking is enabled
+    container.hidden = !(totalCount > 0 && linkEnabled);
   } catch (err) {
     console.error('Failed to load node references:', err);
     container.hidden = true;
@@ -743,40 +1777,80 @@ function openNodeReferencesPage(nodeId) {
 
 async function loadFullNodeReferences(nodeId) {
   const content = document.getElementById('node-refs-page-content');
-  content.innerHTML = '<p>Loading references...</p>';
+  content.innerHTML = '<p>Loading references and media...</p>';
 
   try {
-    const refs = await api.nodes.getReferences(nodeId);
-    if (refs.length === 0) {
-      content.innerHTML = '<p>No linked references found. Add tags to this node that match your references to see them here.</p>';
+    // Fetch both references and media in parallel
+    const [refs, media] = await Promise.all([
+      api.nodes.getReferences(nodeId),
+      api.nodes.getMedia(nodeId)
+    ]);
+
+    if (refs.length === 0 && media.length === 0) {
+      content.innerHTML = '<p>No linked references or media found. Add tags to this node that match your references or media to see them here.</p>';
       return;
     }
 
-    content.innerHTML = refs.map(ref => `
-      <article class="reference-card" role="listitem" data-id="${ref.id}">
-        <h3>${escapeHtml(ref.title || ref.bibtex_key)}</h3>
-        <p class="authors">${escapeHtml(ref.author || 'Unknown author')}</p>
-        <p class="meta">
-          ${ref.year ? `(${ref.year})` : ''}
-          ${ref.journal ? `<em>${escapeHtml(ref.journal)}</em>` : ''}
-          ${ref.booktitle ? `In <em>${escapeHtml(ref.booktitle)}</em>` : ''}
-        </p>
-        <div class="tags">
-          ${ref.taxonomies?.map(t => `
-            <span class="tag" style="background: ${t.color}; color: white;">${escapeHtml(t.name)}</span>
-          `).join('') || ''}
-        </div>
-        ${ref.doi ? `<p class="meta"><a href="https://doi.org/${ref.doi}" target="_blank">DOI: ${ref.doi}</a></p>` : ''}
-        ${ref.abstract ? `<p class="abstract">${escapeHtml(ref.abstract.substring(0, 300))}${ref.abstract.length > 300 ? '...' : ''}</p>` : ''}
-      </article>
-    `).join('');
+    let html = '';
 
-    // Add click handlers to open reference details
-    content.querySelectorAll('.reference-card').forEach(card => {
+    // Combine and interleave references and media
+    const allItems = [
+      ...refs.map(ref => ({ ...ref, itemType: 'reference' })),
+      ...media.map(m => ({ ...m, itemType: 'media' }))
+    ];
+
+    // Sort by created_at descending (most recent first)
+    allItems.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+    html += allItems.map(item => {
+      if (item.itemType === 'reference') {
+        return `
+          <article class="reference-card" role="listitem" data-id="${item.id}" data-type="reference">
+            <h3>${escapeHtml(item.title || item.bibtex_key)}</h3>
+            <p class="authors">${escapeHtml(item.author || 'Unknown author')}</p>
+            <p class="meta">
+              ${item.year ? `(${item.year})` : ''}
+              ${item.journal ? `<em>${escapeHtml(item.journal)}</em>` : ''}
+              ${item.booktitle ? `In <em>${escapeHtml(item.booktitle)}</em>` : ''}
+            </p>
+            <div class="tags">
+              ${item.taxonomies?.map(t => `
+                <span class="tag" style="background: ${t.color}; color: white;">${escapeHtml(t.name)}</span>
+              `).join('') || ''}
+            </div>
+            ${item.doi ? `<p class="meta"><a href="https://doi.org/${item.doi}" target="_blank" rel="noopener noreferrer">DOI: ${item.doi}</a></p>` : ''}
+            ${item.abstract ? `<p class="abstract">${escapeHtml(item.abstract.substring(0, 300))}${item.abstract.length > 300 ? '...' : ''}</p>` : ''}
+            ${renderMatchIndicators(item.match_reasons)}
+          </article>
+        `;
+      } else {
+        return `
+          <article class="reference-card media-card" role="listitem" data-id="${item.id}" data-type="media">
+            <h3>${escapeHtml(item.title)}</h3>
+            <p class="meta"><a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.url)}</a></p>
+            ${item.description ? `<p class="description">${escapeHtml(item.description)}</p>` : ''}
+            <div class="tags">
+              ${item.taxonomies?.map(t => `
+                <span class="tag" style="background: ${t.color}; color: white;">${escapeHtml(t.name)}</span>
+              `).join('') || ''}
+            </div>
+            <p class="meta">Added ${formatDate(item.created_at)}</p>
+            ${renderMatchIndicators(item.match_reasons)}
+          </article>
+        `;
+      }
+    }).join('');
+
+    content.innerHTML = html;
+
+    // Add click handlers for references
+    content.querySelectorAll('.reference-card[data-type="reference"]').forEach(card => {
       card.addEventListener('click', () => openReferenceDetail(card.dataset.id));
     });
+
+    // Media cards - clicking on them doesn't open a modal (links are clickable directly)
   } catch (err) {
-    content.innerHTML = `<p>Error loading references: ${err.message}</p>`;
+    content.innerHTML = `<p>Error loading: ${err.message}</p>`;
   }
 }
 
@@ -891,8 +1965,16 @@ function renderReferencesList() {
   if (totalRefs === 0) {
     container.innerHTML = '<p>No references found. Try adjusting your filters or import BibTeX to get started!</p>';
   } else {
-    container.innerHTML = pageRefs.map(ref => `
+    container.innerHTML = pageRefs.map(ref => {
+      const categoryLabel = ref.legend_category ? getLegendLabelByColor(ref.legend_category) : null;
+      return `
       <article class="reference-card" role="listitem" data-id="${ref.id}">
+        ${ref.legend_category ? `
+          <div class="reference-category" title="${escapeHtml(categoryLabel || 'Category')}">
+            <span class="category-color-block" style="background-color: ${ref.legend_category}"></span>
+            <span class="category-name">${escapeHtml(categoryLabel || 'Category')}</span>
+          </div>
+        ` : ''}
         <h3>${escapeHtml(ref.title || ref.bibtex_key)}</h3>
         <p class="authors">${escapeHtml(ref.author || 'Unknown author')}</p>
         <p class="meta">
@@ -906,7 +1988,7 @@ function renderReferencesList() {
           `).join('') || ''}
         </div>
       </article>
-    `).join('');
+    `}).join('');
 
     // Click handlers
     container.querySelectorAll('.reference-card').forEach(card => {
@@ -956,6 +2038,9 @@ async function openReferenceDetail(refId) {
     refSelectedTags = ref.taxonomies ? ref.taxonomies.map(t => ({ id: t.id, name: t.name, color: t.color })) : [];
     renderSelectedTags('ref');
 
+    // Set up legend category dropdown
+    populateLegendCategorySelect('ref-legend-category', ref.legend_category);
+
     // Set up BibTeX editor
     document.getElementById('ref-edit-bibtex').value = ref.raw_bibtex;
 
@@ -974,10 +2059,50 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
+function renderMatchIndicators(matchReasons) {
+  if (!matchReasons || matchReasons.length === 0) return '';
+
+  const indicators = matchReasons.map(reason => {
+    if (reason.type === 'taxonomy') {
+      return `
+        <span class="match-indicator match-indicator--taxonomy">
+          <span class="match-label">Tag:</span>
+          <span class="color-dot" style="background: ${reason.taxonomy_color || '#6B7280'}"></span>
+          ${escapeHtml(reason.taxonomy_name)}
+        </span>
+      `;
+    } else if (reason.type === 'legend_category') {
+      const legendLabel = getLegendLabelByColor(reason.legend_category);
+      return `
+        <span class="match-indicator match-indicator--legend">
+          <span class="match-label">Category:</span>
+          <span class="color-dot" style="background: ${reason.legend_category}"></span>
+          ${escapeHtml(legendLabel || 'Legend')}
+        </span>
+      `;
+    }
+    return '';
+  }).join('');
+
+  return `<div class="match-indicators">${indicators}</div>`;
+}
+
+function getLegendLabelByColor(color) {
+  if (!color || !legendLabels) return null;
+  const normalizedColor = color.toUpperCase();
+  for (const [labelColor, labelText] of Object.entries(legendLabels)) {
+    if (labelColor.toUpperCase() === normalizedColor) {
+      return labelText;
+    }
+  }
+  return null;
+}
+
 // Tag Input Component Functions
 function getSelectedTags(prefix) {
   if (prefix === 'ref') return refSelectedTags;
   if (prefix === 'node') return nodeSelectedTags;
+  if (prefix === 'media') return mediaSelectedTags;
   return importSelectedTags;
 }
 
@@ -986,6 +2111,8 @@ function setSelectedTags(prefix, tags) {
     refSelectedTags = tags;
   } else if (prefix === 'node') {
     nodeSelectedTags = tags;
+  } else if (prefix === 'media') {
+    mediaSelectedTags = tags;
   } else {
     importSelectedTags = tags;
   }
@@ -1182,14 +2309,85 @@ function setupEventListeners() {
     loadReferences();
   });
 
+  navButtons.media.addEventListener('click', () => {
+    showSection('media');
+    loadMedia();
+    updateMediaTaxonomySelect();
+  });
+
   navButtons.taxonomies.addEventListener('click', () => {
     showSection('taxonomies');
     loadTaxonomies();
   });
 
+  navButtons.settings.addEventListener('click', () => {
+    showSection('settings');
+    loadSettings();
+  });
+
+  navButtons.admin.addEventListener('click', () => {
+    showSection('admin');
+    loadUsers();
+  });
+
   navButtons.about.addEventListener('click', () => {
     showSection('about');
   });
+
+  // Auth buttons
+  document.getElementById('auth-toggle-btn').addEventListener('click', () => {
+    if (currentUser) {
+      handleLogout();
+    } else {
+      showLoginModal();
+    }
+  });
+  document.getElementById('register-btn').addEventListener('click', showRegisterModal);
+  document.getElementById('profile-btn').addEventListener('click', showProfileModal);
+
+  // Auth forms
+  document.getElementById('login-form').addEventListener('submit', handleLogin);
+  document.getElementById('register-form').addEventListener('submit', handleRegister);
+  document.getElementById('profile-form').addEventListener('submit', handleProfileUpdate);
+  document.getElementById('change-password-form').addEventListener('submit', handlePasswordChange);
+
+  // Switch between login/register
+  document.getElementById('switch-to-register').addEventListener('click', (e) => {
+    e.preventDefault();
+    closeModal();
+    showRegisterModal();
+  });
+  document.getElementById('switch-to-login').addEventListener('click', (e) => {
+    e.preventDefault();
+    closeModal();
+    showLoginModal();
+  });
+
+  // Google OAuth buttons
+  document.getElementById('google-login-btn').addEventListener('click', () => {
+    api.auth.googleLogin();
+  });
+  document.getElementById('google-register-btn').addEventListener('click', () => {
+    api.auth.googleLogin();
+  });
+
+  // Admin user management
+  document.getElementById('create-user')?.addEventListener('click', openCreateUserModal);
+  document.getElementById('user-form').addEventListener('submit', handleUserFormSubmit);
+  document.getElementById('user-search')?.addEventListener('input', debounce(() => loadUsers(), 300));
+
+  // Settings
+  document.getElementById('reset-settings')?.addEventListener('click', resetSettings);
+  document.getElementById('setting-theme')?.addEventListener('change', (e) => updateSetting('theme', e.target.value));
+  document.getElementById('setting-node-color')?.addEventListener('input', debounce((e) => updateSetting('default_node_color', e.target.value), 300));
+  document.getElementById('setting-text-color')?.addEventListener('input', debounce((e) => updateSetting('default_text_color', e.target.value), 300));
+  document.getElementById('setting-node-shape')?.addEventListener('change', (e) => updateSetting('default_node_shape', e.target.value));
+  document.getElementById('setting-snap-grid')?.addEventListener('change', (e) => updateSetting('snap_to_grid', e.target.checked));
+  document.getElementById('setting-grid-size')?.addEventListener('change', (e) => updateSetting('grid_size', parseInt(e.target.value) || 20));
+  document.getElementById('setting-auto-save')?.addEventListener('change', (e) => updateSetting('auto_save', e.target.checked));
+  document.getElementById('setting-refs-page-size')?.addEventListener('change', (e) => updateSetting('default_refs_page_size', parseInt(e.target.value) || 20));
+  document.getElementById('setting-refs-sort')?.addEventListener('change', (e) => updateSetting('default_refs_sort', e.target.value));
+  document.getElementById('setting-email-notifications')?.addEventListener('change', (e) => updateSetting('email_notifications', e.target.checked));
 
   // Create BibMap
   document.getElementById('create-bibmap').addEventListener('click', () => {
@@ -1275,17 +2473,42 @@ function setupEventListeners() {
     loadBibMaps();
   });
 
+  // Close BibMap button in editor (closes the active BibMap and goes back to list)
+  document.getElementById('close-bibmap').addEventListener('click', () => {
+    hidePropertiesPanel();
+    closeActiveBibmap();
+    showSection('bibmaps');
+    loadBibMaps();
+  });
+
+  // Close Active BibMap buttons on References/Media/Tags pages
+  document.getElementById('close-active-bibmap-refs').addEventListener('click', () => {
+    closeActiveBibmap();
+    loadReferences();
+  });
+
+  document.getElementById('close-active-bibmap-media').addEventListener('click', () => {
+    closeActiveBibmap();
+    loadMedia();
+  });
+
+  document.getElementById('close-active-bibmap-tags').addEventListener('click', () => {
+    closeActiveBibmap();
+    loadTaxonomies();
+  });
+
   // Back to editor from node references page
   document.getElementById('back-to-editor').addEventListener('click', () => {
     showSection('editor');
   });
 
-  document.getElementById('add-node').addEventListener('click', () => {
+  document.getElementById('add-node').addEventListener('click', async () => {
     if (bibmapCanvas) {
       // Add node at a random position in view
       const x = 100 + Math.random() * 400;
       const y = 100 + Math.random() * 300;
-      bibmapCanvas.addNode(x, y);
+      await bibmapCanvas.addNode(x, y);
+      updateLegend(); // Update legend after adding node
     }
   });
 
@@ -1333,6 +2556,7 @@ function setupEventListeners() {
         try {
           await bibmapCanvas.deleteNode(currentNodeId);
           hidePropertiesPanel();
+          updateLegend(); // Update legend after node deletion
         } catch (err) {
           announce(`Error: ${err.message}`);
         }
@@ -1366,7 +2590,7 @@ function setupEventListeners() {
         currentBibmap = await api.bibmaps.unpublish(currentBibmap.id);
         announce('BibMap unpublished');
       }
-      document.getElementById('copy-link').hidden = !currentBibmap.is_published;
+      document.getElementById('copy-link').disabled = !currentBibmap.is_published;
     } catch (err) {
       // Revert checkbox state on error
       e.target.checked = !e.target.checked;
@@ -1393,6 +2617,40 @@ function setupEventListeners() {
     openEditBibMap();
   });
 
+  // Show Legend toggle
+  document.getElementById('show-legend-toggle').addEventListener('change', (e) => {
+    showLegend = e.target.checked;
+    updateLegend();
+    saveShowLegendState();
+  });
+
+  // Legend double-click to edit labels
+  document.getElementById('legend-items').addEventListener('dblclick', (e) => {
+    const labelElement = e.target.closest('.legend-label');
+    if (labelElement) {
+      const legendItem = labelElement.closest('.legend-item');
+      const color = legendItem?.dataset.color;
+      if (color) {
+        startLegendLabelEdit(labelElement, color);
+      }
+    }
+  });
+
+  // Legend keyboard support for editing (Enter key)
+  document.getElementById('legend-items').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      const labelElement = e.target.closest('.legend-label');
+      if (labelElement) {
+        e.preventDefault();
+        const legendItem = labelElement.closest('.legend-item');
+        const color = legendItem?.dataset.color;
+        if (color) {
+          startLegendLabelEdit(labelElement, color);
+        }
+      }
+    }
+  });
+
   // Node references link
   document.getElementById('node-refs-link').addEventListener('click', (e) => {
     e.preventDefault();
@@ -1412,9 +2670,17 @@ function setupEventListeners() {
 
   document.getElementById('prop-bg-color').addEventListener('input', (e) => {
     saveNodeProperty('background_color', e.target.value);
+    // Update legend when node color changes
+    updateLegend();
+    // Clear existing category selection and refresh the category list
+    populateExistingCategories(e.target.value);
+    // Update link to references checkbox (enabled if has legend category or tags)
+    const checkbox = document.getElementById('prop-link-refs');
+    updateLinkRefsCheckbox(checkbox.checked);
   });
 
   document.getElementById('prop-text-color').addEventListener('input', (e) => {
+    document.getElementById('text-color-bar').style.backgroundColor = e.target.value;
     saveNodeProperty('text_color', e.target.value);
   });
 
@@ -1480,6 +2746,7 @@ function setupEventListeners() {
       try {
         await bibmapCanvas.deleteNode(nodeId);
         hidePropertiesPanel();
+        updateLegend(); // Update legend after node deletion
       } catch (err) {
         announce(`Error: ${err.message}`);
       }
@@ -1538,6 +2805,8 @@ function setupEventListeners() {
     document.getElementById('import-result').hidden = true;
     document.getElementById('import-duplicates').hidden = true;
     document.getElementById('import-errors-container').hidden = true;
+    // Populate legend category dropdown
+    populateLegendCategorySelect('import-legend-category');
     openModal('import-bibtex-modal');
   });
 
@@ -1565,9 +2834,10 @@ function setupEventListeners() {
     }
 
     const taxonomyIds = importSelectedTags.map(t => t.id);
+    const legendCategory = document.getElementById('import-legend-category').value || null;
 
     try {
-      const result = await api.references.import(bibtex, taxonomyIds);
+      const result = await api.references.import(bibtex, taxonomyIds, legendCategory);
       document.getElementById('import-result').hidden = false;
 
       // Separate duplicates from other errors
@@ -1691,6 +2961,103 @@ function setupEventListeners() {
     renderReferencesList();
   });
 
+  // Media section event listeners
+  document.getElementById('add-media').addEventListener('click', () => {
+    openMediaModal();
+  });
+
+  document.getElementById('media-taxonomy-filter').addEventListener('change', (e) => {
+    mediaCurrentPage = 1;
+    loadMedia(e.target.value || null);
+  });
+
+  const mediaTitleFilterInput = document.getElementById('media-title-filter');
+  const debouncedMediaTitleFilter = debounce((value) => {
+    mediaTitleFilter = value;
+    mediaCurrentPage = 1;
+    applyMediaFilterAndSort();
+  }, 300);
+
+  mediaTitleFilterInput.addEventListener('input', (e) => {
+    debouncedMediaTitleFilter(e.target.value);
+  });
+
+  document.getElementById('media-sort').addEventListener('change', (e) => {
+    mediaSortBy = e.target.value;
+    applyMediaFilterAndSort();
+  });
+
+  // Media pagination controls
+  document.getElementById('media-prev-page').addEventListener('click', () => {
+    if (mediaCurrentPage > 1) {
+      mediaCurrentPage--;
+      renderMediaList();
+    }
+  });
+
+  document.getElementById('media-next-page').addEventListener('click', () => {
+    const totalPages = Math.ceil(filteredMedia.length / mediaPageSize) || 1;
+    if (mediaCurrentPage < totalPages) {
+      mediaCurrentPage++;
+      renderMediaList();
+    }
+  });
+
+  document.getElementById('media-page-size').addEventListener('change', (e) => {
+    mediaPageSize = parseInt(e.target.value) || 20;
+    mediaCurrentPage = 1;
+    renderMediaList();
+  });
+
+  // Media form submit
+  document.getElementById('media-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      const legendCategory = document.getElementById('media-legend-category').value || null;
+      const data = {
+        title: document.getElementById('media-title').value,
+        url: document.getElementById('media-url').value,
+        description: document.getElementById('media-description').value || null,
+        taxonomy_ids: mediaSelectedTags.map(t => t.id),
+        legend_category: legendCategory
+      };
+
+      if (editingMediaId) {
+        await api.media.update(editingMediaId, data);
+        announce('Media updated');
+      } else {
+        await api.media.create(data);
+        announce('Media added');
+      }
+
+      closeAllModals();
+      await loadMedia();
+    } catch (err) {
+      announce(`Error: ${err.message}`);
+    }
+  });
+
+  // Delete media button
+  document.getElementById('delete-media-btn').addEventListener('click', async () => {
+    if (!editingMediaId) return;
+
+    closeAllModals();
+    const confirmed = await showConfirm(
+      'Are you sure you want to delete this media entry?',
+      'Delete Media',
+      'Delete'
+    );
+    if (confirmed) {
+      try {
+        await api.media.delete(editingMediaId);
+        await loadMedia();
+        announce('Media deleted');
+      } catch (err) {
+        announce(`Error: ${err.message}`);
+      }
+    }
+  });
+
   // Update BibTeX for reference
   document.getElementById('update-bibtex-btn').addEventListener('click', async () => {
     if (!currentReferenceId) return;
@@ -1721,6 +3088,11 @@ function setupEventListeners() {
     } catch (err) {
       announce(`Error: ${err.message}`);
     }
+  });
+
+  // Legend category change for reference
+  document.getElementById('ref-legend-category').addEventListener('change', (e) => {
+    saveReferenceLegendCategory(e.target.value);
   });
 
   // Delete reference
@@ -1806,8 +3178,13 @@ function getShareId() {
 
 // Initialize share view (read-only, no chrome)
 async function initShareView(bibmapId) {
-  // Hide all UI chrome
-  document.querySelector('header').hidden = true;
+  // Hide all UI chrome - use both hidden attribute and class for robustness
+  const header = document.querySelector('header');
+  if (header) {
+    header.hidden = true;
+    header.style.display = 'none';
+  }
+  document.body.classList.add('share-view-mode');
   document.querySelector('main').innerHTML = `
     <div id="share-view">
       <div id="share-header">
@@ -1824,6 +3201,19 @@ async function initShareView(bibmapId) {
           <g id="nodes-layer"></g>
         </svg>
         <div id="sr-node-list" class="sr-only" role="list" aria-label="BibMap nodes"></div>
+        <!-- Legend Panel for share view (read-only) -->
+        <div id="legend-panel" class="legend-panel" role="region" aria-label="BibMap categories" hidden>
+          <h4 class="legend-title">Categories</h4>
+          <ul id="legend-items" class="legend-items" role="list" aria-label="Category list"></ul>
+        </div>
+      </div>
+      <!-- References panel for share view -->
+      <div id="share-refs-panel" class="share-refs-panel" hidden>
+        <div class="share-refs-header">
+          <button id="share-refs-back" class="btn btn-secondary" aria-label="Back to map">&larr; Back</button>
+          <h2 id="share-refs-node-name">References</h2>
+        </div>
+        <div id="share-refs-content" class="share-refs-content"></div>
       </div>
     </div>
   `;
@@ -1845,7 +3235,30 @@ async function initShareView(bibmapId) {
     canvas.nodes = bibmap.nodes || [];
     canvas.connections = bibmap.connections || [];
     canvas.render();
-    canvas.setReadOnly(true);
+
+    // Setup zoom controls for share view
+    if (!canvas.zoomControlsSetup) {
+      canvas.setupZoomControls();
+      canvas.zoomControlsSetup = true;
+    }
+
+    // Enable read-only mode with linked references support
+    canvas.setReadOnly(true, {
+      enableLinkedReferences: true,
+      onNodeClick: (node) => openShareViewReferences(node, bibmapId)
+    });
+
+    // Fit to screen by default for share view
+    canvas.fitToScreen();
+
+    // Render legend if enabled in settings
+    renderShareViewLegend(bibmap);
+
+    // Set up back button
+    document.getElementById('share-refs-back').addEventListener('click', () => {
+      document.getElementById('share-refs-panel').hidden = true;
+      document.getElementById('bibmap-container').hidden = false;
+    });
   } catch (err) {
     document.getElementById('share-title').textContent = 'BibMap not found';
     document.getElementById('bibmap-container').innerHTML = `
@@ -1855,6 +3268,146 @@ async function initShareView(bibmapId) {
       </div>
     `;
   }
+}
+
+// Open references page in share view (read-only)
+async function openShareViewReferences(node, bibmapId) {
+  const refsPanel = document.getElementById('share-refs-panel');
+  const container = document.getElementById('bibmap-container');
+  const content = document.getElementById('share-refs-content');
+  const nodeName = document.getElementById('share-refs-node-name');
+
+  nodeName.textContent = `References for "${node.label}"`;
+  content.innerHTML = '<p>Loading references...</p>';
+  refsPanel.hidden = false;
+  container.hidden = true;
+
+  try {
+    // Fetch public references and media
+    const [refs, media] = await Promise.all([
+      api.nodes.getPublicReferences(node.id),
+      api.nodes.getPublicMedia(node.id)
+    ]);
+
+    if (refs.length === 0 && media.length === 0) {
+      content.innerHTML = '<p>No linked references or media found for this node.</p>';
+      return;
+    }
+
+    // Combine and interleave references and media
+    const allItems = [
+      ...refs.map(ref => ({ ...ref, itemType: 'reference' })),
+      ...media.map(m => ({ ...m, itemType: 'media' }))
+    ];
+
+    // Sort by created_at descending (most recent first)
+    allItems.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+    const html = allItems.map(item => {
+      if (item.itemType === 'reference') {
+        return `
+          <article class="reference-card" role="listitem">
+            <h3>${escapeHtml(item.title || item.bibtex_key)}</h3>
+            <p class="authors">${escapeHtml(item.author || 'Unknown author')}</p>
+            <p class="meta">
+              ${item.year ? `(${item.year})` : ''}
+              ${item.journal ? `<em>${escapeHtml(item.journal)}</em>` : ''}
+              ${item.booktitle ? `In <em>${escapeHtml(item.booktitle)}</em>` : ''}
+            </p>
+            <div class="tags">
+              ${item.taxonomies?.map(t => `
+                <span class="tag" style="background: ${t.color}; color: white;">${escapeHtml(t.name)}</span>
+              `).join('') || ''}
+            </div>
+            ${item.doi ? `<p class="meta"><a href="https://doi.org/${item.doi}" target="_blank" rel="noopener noreferrer">DOI: ${item.doi}</a></p>` : ''}
+            ${item.abstract ? `<p class="abstract">${escapeHtml(item.abstract.substring(0, 300))}${item.abstract.length > 300 ? '...' : ''}</p>` : ''}
+            ${renderMatchIndicators(item.match_reasons)}
+          </article>
+        `;
+      } else {
+        return `
+          <article class="reference-card media-card" role="listitem">
+            <h3>${escapeHtml(item.title)}</h3>
+            <p class="meta"><a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.url)}</a></p>
+            ${item.description ? `<p class="description">${escapeHtml(item.description)}</p>` : ''}
+            <div class="tags">
+              ${item.taxonomies?.map(t => `
+                <span class="tag" style="background: ${t.color}; color: white;">${escapeHtml(t.name)}</span>
+              `).join('') || ''}
+            </div>
+            ${renderMatchIndicators(item.match_reasons)}
+          </article>
+        `;
+      }
+    }).join('');
+
+    content.innerHTML = html;
+  } catch (err) {
+    content.innerHTML = `<p>Error loading references: ${err.message}</p>`;
+  }
+}
+
+// Render legend in share view (read-only)
+function renderShareViewLegend(bibmap) {
+  let settings = {};
+  if (bibmap.settings_json) {
+    try {
+      settings = JSON.parse(bibmap.settings_json);
+    } catch (e) {
+      return; // Invalid settings, don't show legend
+    }
+  }
+
+  // Only show legend if it was enabled in the editor
+  if (!settings.showLegend) {
+    return;
+  }
+
+  const legendLabelsData = settings.legendLabels || {};
+  const nodes = bibmap.nodes || [];
+
+  // Collect unique background colors from nodes
+  const colorMap = new Map();
+  nodes.forEach(node => {
+    const bgColor = (node.background_color || '#3B82F6').toUpperCase();
+    if (!colorMap.has(bgColor)) {
+      colorMap.set(bgColor, { color: bgColor, count: 1 });
+    } else {
+      colorMap.get(bgColor).count++;
+    }
+  });
+
+  if (colorMap.size === 0) {
+    return;
+  }
+
+  // Sort colors by frequency
+  const sortedColors = Array.from(colorMap.values()).sort((a, b) => b.count - a.count);
+
+  // Build legend items
+  const legendItems = document.getElementById('legend-items');
+  legendItems.innerHTML = '';
+
+  let categoryIndex = 1;
+  sortedColors.forEach((item, index) => {
+    const label = legendLabelsData[item.color] || `Category ${categoryIndex}`;
+    const pattern = getPatternForIndex(index);
+
+    const li = document.createElement('li');
+    li.className = 'legend-item';
+    li.innerHTML = `
+      <span class="legend-color-indicator"
+            style="background-color: ${item.color}"
+            data-pattern="${pattern}"
+            title="Pattern: ${pattern}"
+            aria-label="Color indicator with ${pattern} pattern"></span>
+      <span class="legend-label-readonly">${label}</span>
+    `;
+    legendItems.appendChild(li);
+    categoryIndex++;
+  });
+
+  document.getElementById('legend-panel').hidden = false;
 }
 
 // Initialize
@@ -1870,7 +3423,11 @@ async function init() {
     setupTagInput('ref');
     setupTagInput('import');
     setupTagInput('node');
+    setupTagInput('media');
+    handleOAuthErrors();
+    await checkGoogleOAuth();
     await loadUserInfo();
+    await loadSettings();
     await loadTaxonomies();
     await loadBibMaps();
     showSection('bibmaps');

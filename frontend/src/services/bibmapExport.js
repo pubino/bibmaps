@@ -28,6 +28,7 @@ export function buildBibmapJson(bibmap) {
       title: bibmap.title,
       description: bibmap.description,
       is_published: bibmap.is_published,
+      settings_json: bibmap.settings_json,
       created_at: bibmap.created_at,
       updated_at: bibmap.updated_at
     },
@@ -181,12 +182,13 @@ export const CONNECTION_PROPERTIES = [
 ];
 
 /**
- * BibMap metadata properties that should be included in the export
+ * BibMap properties that should be included in the export
  */
 export const BIBMAP_PROPERTIES = [
   'title',
   'description',
   'is_published',
+  'settings_json',
   'created_at',
   'updated_at'
 ];

@@ -1,0 +1,40 @@
+name: Test Suite
+
+on:
+  push:
+    branches: [main, categories]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend-tests:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and run backend tests
+        run: |
+          docker compose -f docker-compose.test.yml build backend-test
+          docker compose -f docker-compose.test.yml run --rm backend-test
+
+  frontend-tests:
+    name: Frontend Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and run frontend tests
+        run: |
+          docker compose -f docker-compose.test.yml build frontend-test
+          docker compose -f docker-compose.test.yml run --rm frontend-test

@@ -20,6 +20,7 @@ function createTestBibmap() {
     title: 'Test BibMap',
     description: 'A comprehensive test map',
     is_published: true,
+    settings_json: '{"legendLabels": {"#3B82F6": "Primary"}, "showLegend": true}',
     created_at: '2024-01-15T10:00:00Z',
     updated_at: '2024-01-20T15:30:00Z',
     user_id: 'user123',
@@ -171,13 +172,14 @@ describe('BibMap Export - Data Integrity', () => {
     references = createTestReferences();
   });
 
-  describe('buildBibmapJson - BibMap metadata', () => {
-    it('should include all BibMap metadata properties', () => {
+  describe('buildBibmapJson - BibMap properties', () => {
+    it('should include all BibMap properties', () => {
       const result = buildBibmapJson(bibmap);
 
       expect(result.bibmap.title).toBe('Test BibMap');
       expect(result.bibmap.description).toBe('A comprehensive test map');
       expect(result.bibmap.is_published).toBe(true);
+      expect(result.bibmap.settings_json).toBe('{"legendLabels": {"#3B82F6": "Primary"}, "showLegend": true}');
       expect(result.bibmap.created_at).toBe('2024-01-15T10:00:00Z');
       expect(result.bibmap.updated_at).toBe('2024-01-20T15:30:00Z');
     });
@@ -199,6 +201,23 @@ describe('BibMap Export - Data Integrity', () => {
       expect(result.version).toBe('1.0');
       expect(result.exported_at).toBeDefined();
       expect(new Date(result.exported_at)).toBeInstanceOf(Date);
+    });
+
+    it('should preserve settings_json with legend labels', () => {
+      const result = buildBibmapJson(bibmap);
+      expect(result.bibmap.settings_json).toBe('{"legendLabels": {"#3B82F6": "Primary"}, "showLegend": true}');
+    });
+
+    it('should handle null settings_json', () => {
+      bibmap.settings_json = null;
+      const result = buildBibmapJson(bibmap);
+      expect(result.bibmap.settings_json).toBeNull();
+    });
+
+    it('should handle undefined settings_json', () => {
+      delete bibmap.settings_json;
+      const result = buildBibmapJson(bibmap);
+      expect(result.bibmap.settings_json).toBeUndefined();
     });
   });
 
@@ -674,6 +693,7 @@ describe('BibMap Export - Data Integrity', () => {
       expect(BIBMAP_PROPERTIES).toContain('title');
       expect(BIBMAP_PROPERTIES).toContain('description');
       expect(BIBMAP_PROPERTIES).toContain('is_published');
+      expect(BIBMAP_PROPERTIES).toContain('settings_json');
       expect(BIBMAP_PROPERTIES).toContain('created_at');
       expect(BIBMAP_PROPERTIES).toContain('updated_at');
     });

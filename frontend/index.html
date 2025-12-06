@@ -13,12 +13,20 @@
       <nav role="navigation" aria-label="Main navigation">
         <button id="nav-bibmaps" class="nav-btn active" aria-pressed="true">BibMaps</button>
         <button id="nav-references" class="nav-btn" aria-pressed="false">References</button>
-        <button id="nav-media" class="nav-btn" aria-pressed="false" disabled title="Coming soon">Media</button>
+        <button id="nav-media" class="nav-btn" aria-pressed="false">Media</button>
         <button id="nav-taxonomies" class="nav-btn" aria-pressed="false">Tags</button>
-        <button id="nav-settings" class="nav-btn" aria-pressed="false" disabled title="Coming soon">Settings</button>
+        <button id="nav-settings" class="nav-btn" aria-pressed="false" hidden>Settings</button>
+        <button id="nav-admin" class="nav-btn" aria-pressed="false" hidden>Admin</button>
         <button id="nav-about" class="nav-btn" aria-pressed="false">About</button>
       </nav>
-      <div id="user-info" role="status" aria-live="polite"></div>
+      <div id="user-controls">
+        <div id="user-info" role="status" aria-live="polite"></div>
+        <div id="auth-buttons">
+          <button id="auth-toggle-btn" class="btn-secondary btn-sm">Login</button>
+          <button id="register-btn" class="btn-primary btn-sm" hidden>Register</button>
+          <button id="profile-btn" class="btn-secondary btn-sm" hidden>Profile</button>
+        </div>
+      </div>
     </header>
 
     <main role="main">
@@ -49,32 +57,39 @@
           <h2 id="editor-heading" class="editor-title"></h2>
           <div class="tool-group">
             <button id="add-node" class="tool-btn" aria-label="Add new node" title="Add Node">
-              <span aria-hidden="true">&#9634;</span> Add Node
+              <span aria-hidden="true">&#43;</span>
             </button>
             <button id="connect-mode" class="tool-btn" aria-label="Toggle connection mode" title="Connect Nodes" aria-pressed="false">
-              <span aria-hidden="true">&#8594;</span> Connect
+              <span aria-hidden="true">&#8594;</span>
             </button>
             <button id="duplicate-btn" class="tool-btn" aria-label="Duplicate selected" title="Duplicate" disabled>
-              <span aria-hidden="true">&#10064;</span> Duplicate
+              <span aria-hidden="true">&#10697;</span>
             </button>
             <button id="delete-btn" class="tool-btn tool-btn-danger" aria-label="Delete selected" title="Delete" disabled>
-              <span aria-hidden="true">&#128465;</span> Delete
+              <span aria-hidden="true">&#128465;</span>
             </button>
             <label class="toggle-label-toolbar" for="snap-to-grid">
-              <input type="checkbox" id="snap-to-grid" aria-label="Snap to grid">
-              <span>Snap to Grid</span>
+              <input type="checkbox" id="snap-to-grid" aria-label="Grid snap">
+              <span>Grid Snap</span>
             </label>
           </div>
           <div class="tool-group publish-group">
             <button id="edit-bibmap" class="tool-btn" aria-label="Edit BibMap details" title="Edit Details">
-              <span aria-hidden="true">&#9998;</span> Edit Details
+              <span aria-hidden="true">&#9998;</span>
             </button>
+            <label class="toggle-label" for="show-legend-toggle">
+              <input type="checkbox" id="show-legend-toggle" aria-label="Show legend">
+              <span class="toggle-text">Legend</span>
+            </label>
             <label class="toggle-label" for="publish-toggle">
               <input type="checkbox" id="publish-toggle" aria-label="Publish this BibMap">
               <span class="toggle-text">Published</span>
             </label>
-            <button id="copy-link" class="tool-btn" aria-label="Copy shareable link" title="Copy Link" hidden>
-              <span aria-hidden="true">&#128279;</span> Copy Link
+            <button id="copy-link" class="tool-btn" aria-label="Copy shareable link" title="Copy Link" disabled>
+              <span aria-hidden="true">&#128279;</span>
+            </button>
+            <button id="close-bibmap" class="tool-btn tool-btn-danger" aria-label="Close this BibMap" title="Close BibMap">
+              <span aria-hidden="true">&times;</span>
             </button>
           </div>
         </div>
@@ -92,6 +107,12 @@
           </svg>
           <!-- Screen reader accessible node list -->
           <div id="sr-node-list" class="sr-only" role="list" aria-label="BibMap nodes"></div>
+
+          <!-- Legend Panel -->
+          <div id="legend-panel" class="legend-panel" role="region" aria-label="BibMap legend" hidden>
+            <h4 class="legend-title">Legend</h4>
+            <ul id="legend-items" class="legend-items" role="list" aria-label="Legend categories"></ul>
+          </div>
         </div>
 
         <!-- Editor Panels Container -->
@@ -106,7 +127,7 @@
             </div>
             <div id="node-properties-form">
               <div class="form-group">
-                <label for="prop-label">Label:</label>
+                <label for="prop-label">Text Label</label>
                 <input type="text" id="prop-label" required>
               </div>
               <div class="form-group">
@@ -116,14 +137,17 @@
                 </label>
               </div>
               <div class="form-group">
-                <label for="prop-description">Description:</label>
-                <textarea id="prop-description" rows="3"></textarea>
+                <label>Category</label>
+                <div id="category-selector" class="category-selector">
+                  <div id="existing-categories" class="existing-categories"></div>
+                  <label class="category-option new-category-option" title="New category">
+                    <input type="color" id="prop-bg-color" class="category-color-picker">
+                  </label>
+                </div>
               </div>
-              <div class="form-group-inline">
-                <label for="prop-bg-color">Background:</label>
-                <input type="color" id="prop-bg-color">
-                <label for="prop-text-color">Text:</label>
-                <input type="color" id="prop-text-color">
+              <div class="form-group">
+                <label for="prop-description">Description</label>
+                <textarea id="prop-description" rows="3"></textarea>
               </div>
               <div class="form-group">
                 <div class="text-style-controls">
@@ -137,6 +161,11 @@
                   <button type="button" id="prop-bold" class="style-btn" aria-label="Bold" title="Bold"><b>B</b></button>
                   <button type="button" id="prop-italic" class="style-btn" aria-label="Italic" title="Italic"><i>I</i></button>
                   <button type="button" id="prop-underline" class="style-btn" aria-label="Underline" title="Underline"><u>U</u></button>
+                  <button type="button" id="prop-text-color-btn" class="style-btn text-color-btn" aria-label="Text color" title="Text color">
+                    <span class="text-color-icon">A</span>
+                    <span class="text-color-bar" id="text-color-bar"></span>
+                    <input type="color" id="prop-text-color" class="hidden-color-input" tabindex="-1">
+                  </button>
                 </div>
               </div>
               <div class="form-group">
@@ -165,13 +194,13 @@
               <div class="form-group" id="link-refs-group">
                 <label class="toggle-label-inline" for="prop-link-refs">
                   <input type="checkbox" id="prop-link-refs" disabled>
-                  <span>Link to Tagged References</span>
+                  <span>Link to References</span>
                 </label>
-                <p class="help-text" id="link-refs-help">Add tags above to enable linking to references</p>
+                <p class="help-text" id="link-refs-help">Add tags or set a legend category to enable linking</p>
               </div>
             </div>
             <div id="node-references" hidden>
-              <a href="#" id="node-refs-link" class="refs-link btn-secondary btn-sm">View Linked References (<span id="node-refs-count">0</span>)</a>
+              <a href="#" id="node-refs-link" class="refs-link btn-secondary btn-sm">View Linked Items (<span id="node-refs-count">0</span>)</a>
             </div>
           </aside>
 
@@ -185,7 +214,7 @@
             </div>
             <div id="connection-properties-form">
               <div class="form-group">
-                <label for="conn-label">Label:</label>
+                <label for="conn-label">Label</label>
                 <input type="text" id="conn-label" placeholder="Optional label">
               </div>
               <div class="form-group">
@@ -195,13 +224,13 @@
                 </label>
               </div>
               <div class="form-group-inline">
-                <label for="conn-line-color">Color:</label>
+                <label for="conn-line-color">Color</label>
                 <input type="color" id="conn-line-color" value="#6B7280">
-                <label for="conn-line-width">Thickness:</label>
+                <label for="conn-line-width">Thickness</label>
                 <input type="number" id="conn-line-width" min="1" max="10" value="2" class="line-width-input">
               </div>
               <div class="form-group">
-                <label for="conn-line-style">Style:</label>
+                <label for="conn-line-style">Style</label>
                 <select id="conn-line-style">
                   <option value="solid">Solid</option>
                   <option value="dashed">Dashed</option>
@@ -209,7 +238,7 @@
                 </select>
               </div>
               <div class="form-group">
-                <label for="conn-arrow-type">Arrow:</label>
+                <label for="conn-arrow-type">Arrow</label>
                 <select id="conn-arrow-type">
                   <option value="end">End</option>
                   <option value="both">Both</option>
@@ -224,10 +253,15 @@
       <!-- References Section -->
       <section id="references-section" class="section" aria-labelledby="references-heading" hidden>
         <div class="section-header">
-          <h2 id="references-heading">Academic References</h2>
-          <button id="import-bibtex" class="btn-primary">
-            <span aria-hidden="true">&#8593;</span> Import BibTeX
-          </button>
+          <h2 id="references-heading">All Academic References</h2>
+          <div class="header-actions">
+            <button id="import-bibtex" class="btn-primary">
+              <span aria-hidden="true">&#8593;</span> Import BibTeX
+            </button>
+            <button id="close-active-bibmap-refs" class="btn-secondary btn-danger-text close-active-bibmap-btn" aria-label="Close active BibMap" disabled>
+              &times; Close BibMap
+            </button>
+          </div>
         </div>
         <div class="filter-bar">
           <div class="filter-group">
@@ -276,13 +310,73 @@
         </div>
       </section>
 
+      <!-- Media Section -->
+      <section id="media-section" class="section" aria-labelledby="media-heading" hidden>
+        <div class="section-header">
+          <h2 id="media-heading">All Media Links</h2>
+          <div class="header-actions">
+            <button id="add-media" class="btn-primary">
+              <span aria-hidden="true">+</span> Add Media
+            </button>
+            <button id="close-active-bibmap-media" class="btn-secondary btn-danger-text close-active-bibmap-btn" aria-label="Close active BibMap" disabled>
+              &times; Close BibMap
+            </button>
+          </div>
+        </div>
+        <div class="filter-bar">
+          <div class="filter-group">
+            <label for="media-title-filter">Search:</label>
+            <input type="text" id="media-title-filter" placeholder="Filter by title..." class="filter-input">
+          </div>
+          <div class="filter-group">
+            <label for="media-taxonomy-filter">Tag:</label>
+            <select id="media-taxonomy-filter">
+              <option value="">All</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label for="media-sort">Sort by:</label>
+            <select id="media-sort">
+              <option value="created-desc">Date Added (Newest)</option>
+              <option value="created-asc">Date Added (Oldest)</option>
+              <option value="title-asc">Title (A-Z)</option>
+              <option value="title-desc">Title (Z-A)</option>
+            </select>
+          </div>
+        </div>
+        <div id="media-list" class="references-grid" role="list" aria-label="Media"></div>
+        <div class="pagination-bar">
+          <div class="pagination-info">
+            <span id="media-pagination-info">Showing 0 of 0 media</span>
+          </div>
+          <div class="pagination-controls">
+            <button id="media-prev-page" class="btn-secondary btn-sm" disabled>&larr; Previous</button>
+            <span id="media-page-indicator">Page 1</span>
+            <button id="media-next-page" class="btn-secondary btn-sm" disabled>Next &rarr;</button>
+          </div>
+          <div class="pagination-size">
+            <label for="media-page-size">Show:</label>
+            <select id="media-page-size">
+              <option value="20" selected>20</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
       <!-- Tags Section -->
       <section id="taxonomies-section" class="section" aria-labelledby="taxonomies-heading" hidden>
         <div class="section-header">
-          <h2 id="taxonomies-heading">Tags</h2>
-          <button id="create-taxonomy" class="btn-primary">
-            <span aria-hidden="true">+</span> New Tag
-          </button>
+          <h2 id="taxonomies-heading">All Tags</h2>
+          <div class="header-actions">
+            <button id="create-taxonomy" class="btn-primary">
+              <span aria-hidden="true">+</span> New Tag
+            </button>
+            <button id="close-active-bibmap-tags" class="btn-secondary btn-danger-text close-active-bibmap-btn" aria-label="Close active BibMap" disabled>
+              &times; Close BibMap
+            </button>
+          </div>
         </div>
         <div class="filter-bar">
           <div class="filter-group">
@@ -310,10 +404,129 @@
           <button id="back-to-editor" class="btn-secondary" aria-label="Back to BibMap editor">
             &larr; Back to Editor
           </button>
-          <h2 id="node-refs-heading">References for "<span id="node-refs-node-name"></span>"</h2>
+          <h2 id="node-refs-heading">References &amp; Media for "<span id="node-refs-node-name"></span>"</h2>
         </div>
         <p id="node-refs-description" class="section-description"></p>
         <div id="node-refs-page-content" class="references-grid" role="list" aria-label="Node References"></div>
+      </section>
+
+      <!-- Admin Section -->
+      <section id="admin-section" class="section" aria-labelledby="admin-heading" hidden>
+        <div class="section-header">
+          <h2 id="admin-heading">User Management</h2>
+          <button id="create-user" class="btn-primary">
+            <span aria-hidden="true">+</span> New User
+          </button>
+        </div>
+        <div class="filter-bar">
+          <div class="filter-group">
+            <label for="user-search">Search:</label>
+            <input type="text" id="user-search" placeholder="Search by name or email..." class="filter-input">
+          </div>
+        </div>
+        <div id="users-list" class="card-grid" role="list" aria-label="Users"></div>
+      </section>
+
+      <!-- Settings Section -->
+      <section id="settings-section" class="section" aria-labelledby="settings-heading" hidden>
+        <div class="section-header">
+          <h2 id="settings-heading">Settings</h2>
+          <button id="reset-settings" class="btn-secondary">Reset to Defaults</button>
+        </div>
+
+        <div class="settings-container">
+          <!-- Display Preferences -->
+          <div class="settings-group">
+            <h3>Display Preferences</h3>
+            <div class="form-group">
+              <label for="setting-theme">Theme:</label>
+              <select id="setting-theme">
+                <option value="system">System Default</option>
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Node Defaults -->
+          <div class="settings-group">
+            <h3>Default Node Styles</h3>
+            <div class="form-group-inline">
+              <label for="setting-node-color">Background:</label>
+              <input type="color" id="setting-node-color" value="#3B82F6">
+              <label for="setting-text-color">Text:</label>
+              <input type="color" id="setting-text-color" value="#FFFFFF">
+            </div>
+            <div class="form-group">
+              <label for="setting-node-shape">Shape:</label>
+              <select id="setting-node-shape">
+                <option value="rectangle">Rectangle</option>
+                <option value="rounded-rectangle">Rounded Rectangle</option>
+                <option value="ellipse">Ellipse</option>
+                <option value="diamond">Diamond</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Editor Preferences -->
+          <div class="settings-group">
+            <h3>Editor Preferences</h3>
+            <div class="form-group">
+              <label class="toggle-label-inline" for="setting-snap-grid">
+                <input type="checkbox" id="setting-snap-grid">
+                <span>Snap to Grid</span>
+              </label>
+            </div>
+            <div class="form-group">
+              <label for="setting-grid-size">Grid Size:</label>
+              <input type="number" id="setting-grid-size" min="5" max="100" value="20" class="number-input">
+            </div>
+            <div class="form-group">
+              <label class="toggle-label-inline" for="setting-auto-save">
+                <input type="checkbox" id="setting-auto-save" checked>
+                <span>Auto-save changes</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Reference Display -->
+          <div class="settings-group">
+            <h3>Reference Display</h3>
+            <div class="form-group">
+              <label for="setting-refs-page-size">References per Page:</label>
+              <select id="setting-refs-page-size">
+                <option value="20">20</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+                <option value="200">200</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="setting-refs-sort">Default Sort:</label>
+              <select id="setting-refs-sort">
+                <option value="imported-desc">Date Imported (Newest)</option>
+                <option value="imported-asc">Date Imported (Oldest)</option>
+                <option value="year-desc">Publication Year (Newest)</option>
+                <option value="year-asc">Publication Year (Oldest)</option>
+                <option value="title-asc">Title (A-Z)</option>
+                <option value="title-desc">Title (Z-A)</option>
+                <option value="author-asc">Author (A-Z)</option>
+                <option value="author-desc">Author (Z-A)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Notifications -->
+          <div class="settings-group">
+            <h3>Notifications</h3>
+            <div class="form-group">
+              <label class="toggle-label-inline" for="setting-email-notifications">
+                <input type="checkbox" id="setting-email-notifications" checked>
+                <span>Email Notifications</span>
+              </label>
+            </div>
+          </div>
+        </div>
       </section>
 
       <!-- About Section -->
@@ -407,6 +620,13 @@
               <div class="tag-suggestions" id="import-tag-suggestions" hidden></div>
             </div>
           </div>
+          <div class="form-group">
+            <label for="import-legend-category">Legend Category:</label>
+            <select id="import-legend-category" class="legend-category-select">
+              <option value="">None</option>
+            </select>
+            <p class="help-text">Assign all imported references to this legend category</p>
+          </div>
           <div class="form-actions">
             <button type="submit" class="btn-primary">Import</button>
             <button type="button" class="btn-secondary modal-close">Cancel</button>
@@ -471,6 +691,13 @@
             <div class="tag-suggestions" id="ref-tag-suggestions" hidden></div>
           </div>
         </div>
+        <div class="form-group">
+          <label for="ref-legend-category">Legend Category:</label>
+          <select id="ref-legend-category" class="legend-category-select">
+            <option value="">None</option>
+          </select>
+          <p class="help-text">Assign to a legend category to link with nodes of the same color</p>
+        </div>
         <div class="form-group" id="edit-bibtex-section">
           <details>
             <summary>Edit BibTeX</summary>
@@ -484,6 +711,212 @@
           <button type="button" id="delete-reference-btn" class="btn-danger">Delete Reference</button>
           <button type="button" class="btn-secondary modal-close">Close</button>
         </div>
+      </dialog>
+
+      <!-- Create/Edit Media Modal -->
+      <dialog id="media-modal" class="modal" aria-labelledby="media-modal-title">
+        <div class="panel-header">
+          <h2 id="media-modal-title">Add Media</h2>
+          <button type="button" id="delete-media-btn" class="btn-icon btn-danger-icon" aria-label="Delete Media" title="Delete Media" hidden>
+            <span aria-hidden="true">&#128465;</span>
+          </button>
+        </div>
+        <form id="media-form">
+          <div class="form-group">
+            <label for="media-title">Title:</label>
+            <input type="text" id="media-title" required placeholder="Enter a title for this media">
+          </div>
+          <div class="form-group">
+            <label for="media-url">URL:</label>
+            <input type="url" id="media-url" required placeholder="https://example.com/resource">
+          </div>
+          <div class="form-group">
+            <label for="media-description">Description (optional):</label>
+            <textarea id="media-description" rows="2" placeholder="Brief description of this media"></textarea>
+          </div>
+          <div class="form-group">
+            <label>Tags:</label>
+            <div class="tag-input-container" id="media-tag-input-container">
+              <div class="selected-tags" id="media-selected-tags"></div>
+              <input type="text" id="media-tag-search" class="tag-search-input" placeholder="Type to add tags..." autocomplete="off">
+              <div class="tag-suggestions" id="media-tag-suggestions" hidden></div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="media-legend-category">Legend Category:</label>
+            <select id="media-legend-category" class="legend-category-select">
+              <option value="">None</option>
+            </select>
+            <p class="help-text">Assign to a legend category to link with nodes of the same color</p>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn-primary" id="media-submit-btn">Add</button>
+            <button type="button" class="btn-secondary modal-close">Cancel</button>
+          </div>
+        </form>
+      </dialog>
+
+      <!-- Login Modal -->
+      <dialog id="login-modal" class="modal" aria-labelledby="login-title">
+        <h2 id="login-title">Login</h2>
+        <form id="login-form">
+          <div class="form-group">
+            <label for="login-username">Username or Email:</label>
+            <input type="text" id="login-username" required autocomplete="username">
+          </div>
+          <div class="form-group">
+            <label for="login-password">Password:</label>
+            <input type="password" id="login-password" required autocomplete="current-password">
+          </div>
+          <div id="login-error" class="error-message" hidden></div>
+          <div class="form-actions">
+            <button type="submit" class="btn-primary">Login</button>
+            <button type="button" class="btn-secondary modal-close">Cancel</button>
+          </div>
+          <div id="login-google-section" class="oauth-section" hidden>
+            <div class="oauth-divider"><span>or</span></div>
+            <button type="button" id="google-login-btn" class="btn-oauth btn-google">
+              <svg class="google-icon" viewBox="0 0 24 24" width="18" height="18">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+              </svg>
+              Continue with Google
+            </button>
+          </div>
+          <p class="modal-footer-text">Don't have an account? <a href="#" id="switch-to-register">Register here</a></p>
+        </form>
+      </dialog>
+
+      <!-- Register Modal -->
+      <dialog id="register-modal" class="modal" aria-labelledby="register-title">
+        <h2 id="register-title">Create Account</h2>
+        <form id="register-form">
+          <div class="form-group">
+            <label for="register-email">Email:</label>
+            <input type="email" id="register-email" required autocomplete="email">
+          </div>
+          <div class="form-group">
+            <label for="register-username">Username:</label>
+            <input type="text" id="register-username" required autocomplete="username" pattern="[a-zA-Z0-9_-]+" title="Letters, numbers, underscores, and hyphens only">
+          </div>
+          <div class="form-group">
+            <label for="register-display-name">Display Name (optional):</label>
+            <input type="text" id="register-display-name" autocomplete="name">
+          </div>
+          <div class="form-group">
+            <label for="register-password">Password:</label>
+            <input type="password" id="register-password" required autocomplete="new-password" minlength="8">
+          </div>
+          <div class="form-group">
+            <label for="register-confirm-password">Confirm Password:</label>
+            <input type="password" id="register-confirm-password" required autocomplete="new-password">
+          </div>
+          <div id="register-error" class="error-message" hidden></div>
+          <div class="form-actions">
+            <button type="submit" class="btn-primary">Register</button>
+            <button type="button" class="btn-secondary modal-close">Cancel</button>
+          </div>
+          <div id="register-google-section" class="oauth-section" hidden>
+            <div class="oauth-divider"><span>or</span></div>
+            <button type="button" id="google-register-btn" class="btn-oauth btn-google">
+              <svg class="google-icon" viewBox="0 0 24 24" width="18" height="18">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+              </svg>
+              Sign up with Google
+            </button>
+          </div>
+          <p class="modal-footer-text">Already have an account? <a href="#" id="switch-to-login">Login here</a></p>
+        </form>
+      </dialog>
+
+      <!-- Profile Modal -->
+      <dialog id="profile-modal" class="modal" aria-labelledby="profile-title">
+        <h2 id="profile-title">Your Profile</h2>
+        <form id="profile-form">
+          <div class="form-group">
+            <label for="profile-email">Email:</label>
+            <input type="email" id="profile-email" required>
+          </div>
+          <div class="form-group">
+            <label for="profile-display-name">Display Name:</label>
+            <input type="text" id="profile-display-name">
+          </div>
+          <div class="form-group">
+            <p><strong>Username:</strong> <span id="profile-username"></span></p>
+            <p><strong>Role:</strong> <span id="profile-role"></span></p>
+          </div>
+          <div id="profile-error" class="error-message" hidden></div>
+          <div class="form-actions">
+            <button type="submit" class="btn-primary">Save Changes</button>
+            <button type="button" class="btn-secondary modal-close">Cancel</button>
+          </div>
+        </form>
+        <hr>
+        <h3>Change Password</h3>
+        <form id="change-password-form">
+          <div class="form-group">
+            <label for="current-password">Current Password:</label>
+            <input type="password" id="current-password" required autocomplete="current-password">
+          </div>
+          <div class="form-group">
+            <label for="new-password">New Password:</label>
+            <input type="password" id="new-password" required autocomplete="new-password" minlength="8">
+          </div>
+          <div class="form-group">
+            <label for="confirm-new-password">Confirm New Password:</label>
+            <input type="password" id="confirm-new-password" required autocomplete="new-password">
+          </div>
+          <div id="password-error" class="error-message" hidden></div>
+          <div class="form-actions">
+            <button type="submit" class="btn-primary">Change Password</button>
+          </div>
+        </form>
+      </dialog>
+
+      <!-- Create/Edit User Modal (Admin) -->
+      <dialog id="user-modal" class="modal" aria-labelledby="user-modal-title">
+        <h2 id="user-modal-title">Create User</h2>
+        <form id="user-form">
+          <div class="form-group">
+            <label for="user-email">Email:</label>
+            <input type="email" id="user-email" required>
+          </div>
+          <div class="form-group">
+            <label for="user-username">Username:</label>
+            <input type="text" id="user-username" required pattern="[a-zA-Z0-9_-]+">
+          </div>
+          <div class="form-group">
+            <label for="user-display-name">Display Name:</label>
+            <input type="text" id="user-display-name">
+          </div>
+          <div class="form-group" id="user-password-group">
+            <label for="user-password">Password:</label>
+            <input type="password" id="user-password" minlength="8">
+          </div>
+          <div class="form-group">
+            <label for="user-role">Role:</label>
+            <select id="user-role">
+              <option value="user">Standard User</option>
+              <option value="admin">Administrator</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="toggle-label-inline" for="user-active">
+              <input type="checkbox" id="user-active" checked>
+              <span>Active</span>
+            </label>
+          </div>
+          <div id="user-error" class="error-message" hidden></div>
+          <div class="form-actions">
+            <button type="submit" class="btn-primary" id="user-submit-btn">Create</button>
+            <button type="button" class="btn-secondary modal-close">Cancel</button>
+          </div>
+        </form>
       </dialog>
 
     </div>
