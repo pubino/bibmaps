@@ -57,36 +57,36 @@
           <h2 id="editor-heading" class="editor-title"></h2>
           <div class="tool-group">
             <button id="add-node" class="tool-btn" aria-label="Add new node" title="Add Node">
-              <span aria-hidden="true">&#9634;</span> Add Node
+              <span aria-hidden="true">&#43;</span>
             </button>
             <button id="connect-mode" class="tool-btn" aria-label="Toggle connection mode" title="Connect Nodes" aria-pressed="false">
-              <span aria-hidden="true">&#8594;</span> Connect
+              <span aria-hidden="true">&#8594;</span>
             </button>
             <button id="duplicate-btn" class="tool-btn" aria-label="Duplicate selected" title="Duplicate" disabled>
-              <span aria-hidden="true">&#10064;</span> Duplicate
+              <span aria-hidden="true">&#10697;</span>
             </button>
             <button id="delete-btn" class="tool-btn tool-btn-danger" aria-label="Delete selected" title="Delete" disabled>
-              <span aria-hidden="true">&#128465;</span> Delete
+              <span aria-hidden="true">&#128465;</span>
             </button>
             <label class="toggle-label-toolbar" for="snap-to-grid">
-              <input type="checkbox" id="snap-to-grid" aria-label="Snap to grid">
-              <span>Snap to Grid</span>
+              <input type="checkbox" id="snap-to-grid" aria-label="Grid snap">
+              <span>Grid Snap</span>
             </label>
           </div>
           <div class="tool-group publish-group">
             <button id="edit-bibmap" class="tool-btn" aria-label="Edit BibMap details" title="Edit Details">
-              <span aria-hidden="true">&#9998;</span> Edit Details
+              <span aria-hidden="true">&#9998;</span>
             </button>
             <label class="toggle-label" for="show-legend-toggle">
               <input type="checkbox" id="show-legend-toggle" aria-label="Show legend">
-              <span class="toggle-text">Show Legend</span>
+              <span class="toggle-text">Legend</span>
             </label>
             <label class="toggle-label" for="publish-toggle">
               <input type="checkbox" id="publish-toggle" aria-label="Publish this BibMap">
               <span class="toggle-text">Published</span>
             </label>
-            <button id="copy-link" class="tool-btn" aria-label="Copy shareable link" title="Copy Link" hidden>
-              <span aria-hidden="true">&#128279;</span> Copy Link
+            <button id="copy-link" class="tool-btn" aria-label="Copy shareable link" title="Copy Link" disabled>
+              <span aria-hidden="true">&#128279;</span>
             </button>
           </div>
         </div>
@@ -124,7 +124,7 @@
             </div>
             <div id="node-properties-form">
               <div class="form-group">
-                <label for="prop-label">Text Label:</label>
+                <label for="prop-label">Text Label</label>
                 <input type="text" id="prop-label" required>
               </div>
               <div class="form-group">
@@ -133,13 +133,13 @@
                   <span>Wrap text to node size</span>
                 </label>
               </div>
-              <div class="form-group">
-                <label for="prop-description">Description:</label>
-                <textarea id="prop-description" rows="3"></textarea>
-              </div>
               <div class="form-group-inline">
-                <label for="prop-bg-color">Legend Label:</label>
+                <label for="prop-bg-color">Legend Label</label>
                 <input type="color" id="prop-bg-color">
+              </div>
+              <div class="form-group">
+                <label for="prop-description">Description</label>
+                <textarea id="prop-description" rows="3"></textarea>
               </div>
               <div class="form-group">
                 <div class="text-style-controls">
@@ -206,7 +206,7 @@
             </div>
             <div id="connection-properties-form">
               <div class="form-group">
-                <label for="conn-label">Label:</label>
+                <label for="conn-label">Label</label>
                 <input type="text" id="conn-label" placeholder="Optional label">
               </div>
               <div class="form-group">
@@ -216,13 +216,13 @@
                 </label>
               </div>
               <div class="form-group-inline">
-                <label for="conn-line-color">Color:</label>
+                <label for="conn-line-color">Color</label>
                 <input type="color" id="conn-line-color" value="#6B7280">
-                <label for="conn-line-width">Thickness:</label>
+                <label for="conn-line-width">Thickness</label>
                 <input type="number" id="conn-line-width" min="1" max="10" value="2" class="line-width-input">
               </div>
               <div class="form-group">
-                <label for="conn-line-style">Style:</label>
+                <label for="conn-line-style">Style</label>
                 <select id="conn-line-style">
                   <option value="solid">Solid</option>
                   <option value="dashed">Dashed</option>
@@ -230,7 +230,7 @@
                 </select>
               </div>
               <div class="form-group">
-                <label for="conn-arrow-type">Arrow:</label>
+                <label for="conn-arrow-type">Arrow</label>
                 <select id="conn-arrow-type">
                   <option value="end">End</option>
                   <option value="both">Both</option>

@@ -1189,7 +1189,7 @@ async function openBibMapEditor(bibmapId) {
     const publishToggle = document.getElementById('publish-toggle');
     const copyLinkBtn = document.getElementById('copy-link');
     publishToggle.checked = currentBibmap.is_published || false;
-    copyLinkBtn.hidden = !currentBibmap.is_published;
+    copyLinkBtn.disabled = !currentBibmap.is_published;
 
     // Load legend state from metadata and update UI
     loadLegendState();
@@ -2313,7 +2313,7 @@ function setupEventListeners() {
         currentBibmap = await api.bibmaps.unpublish(currentBibmap.id);
         announce('BibMap unpublished');
       }
-      document.getElementById('copy-link').hidden = !currentBibmap.is_published;
+      document.getElementById('copy-link').disabled = !currentBibmap.is_published;
     } catch (err) {
       // Revert checkbox state on error
       e.target.checked = !e.target.checked;
@@ -2886,8 +2886,13 @@ function getShareId() {
 
 // Initialize share view (read-only, no chrome)
 async function initShareView(bibmapId) {
-  // Hide all UI chrome
-  document.querySelector('header').hidden = true;
+  // Hide all UI chrome - use both hidden attribute and class for robustness
+  const header = document.querySelector('header');
+  if (header) {
+    header.hidden = true;
+    header.style.display = 'none';
+  }
+  document.body.classList.add('share-view-mode');
   document.querySelector('main').innerHTML = `
     <div id="share-view">
       <div id="share-header">
@@ -2910,6 +2915,14 @@ async function initShareView(bibmapId) {
           <ul id="legend-items" class="legend-items" role="list" aria-label="Legend categories"></ul>
         </div>
       </div>
+      <!-- References panel for share view -->
+      <div id="share-refs-panel" class="share-refs-panel" hidden>
+        <div class="share-refs-header">
+          <button id="share-refs-back" class="btn btn-secondary" aria-label="Back to map">&larr; Back</button>
+          <h2 id="share-refs-node-name">References</h2>
+        </div>
+        <div id="share-refs-content" class="share-refs-content"></div>
+      </div>
     </div>
   `;
 
@@ -2930,10 +2943,27 @@ async function initShareView(bibmapId) {
     canvas.nodes = bibmap.nodes || [];
     canvas.connections = bibmap.connections || [];
     canvas.render();
-    canvas.setReadOnly(true);
+
+    // Setup zoom controls for share view
+    if (!canvas.zoomControlsSetup) {
+      canvas.setupZoomControls();
+      canvas.zoomControlsSetup = true;
+    }
+
+    // Enable read-only mode with linked references support
+    canvas.setReadOnly(true, {
+      enableLinkedReferences: true,
+      onNodeClick: (node) => openShareViewReferences(node, bibmapId)
+    });
 
     // Render legend if enabled in metadata
     renderShareViewLegend(bibmap);
+
+    // Set up back button
+    document.getElementById('share-refs-back').addEventListener('click', () => {
+      document.getElementById('share-refs-panel').hidden = true;
+      document.getElementById('bibmap-container').hidden = false;
+    });
   } catch (err) {
     document.getElementById('share-title').textContent = 'BibMap not found';
     document.getElementById('bibmap-container').innerHTML = `
@@ -2942,6 +2972,76 @@ async function initShareView(bibmapId) {
         <a href="/">Go to BibMap</a>
       </div>
     `;
+  }
+}
+
+// Open references page in share view (read-only)
+async function openShareViewReferences(node, bibmapId) {
+  const refsPanel = document.getElementById('share-refs-panel');
+  const container = document.getElementById('bibmap-container');
+  const content = document.getElementById('share-refs-content');
+  const nodeName = document.getElementById('share-refs-node-name');
+
+  nodeName.textContent = `References for "${node.label}"`;
+  content.innerHTML = '<p>Loading references...</p>';
+  refsPanel.hidden = false;
+  container.hidden = true;
+
+  try {
+    // Fetch public references and media
+    const [refs, media] = await Promise.all([
+      api.nodes.getPublicReferences(node.id),
+      api.nodes.getPublicMedia(node.id)
+    ]);
+
+    if (refs.length === 0 && media.length === 0) {
+      content.innerHTML = '<p>No linked references or media found for this node.</p>';
+      return;
+    }
+
+    let html = '';
+
+    if (refs.length > 0) {
+      html += `<h3 class="section-subheading">References (${refs.length})</h3>`;
+      html += refs.map(ref => `
+        <article class="reference-card" role="listitem">
+          <h3>${escapeHtml(ref.title || ref.bibtex_key)}</h3>
+          <p class="authors">${escapeHtml(ref.author || 'Unknown author')}</p>
+          <p class="meta">
+            ${ref.year ? `(${ref.year})` : ''}
+            ${ref.journal ? `<em>${escapeHtml(ref.journal)}</em>` : ''}
+            ${ref.booktitle ? `In <em>${escapeHtml(ref.booktitle)}</em>` : ''}
+          </p>
+          <div class="tags">
+            ${ref.taxonomies?.map(t => `
+              <span class="tag" style="background: ${t.color}; color: white;">${escapeHtml(t.name)}</span>
+            `).join('') || ''}
+          </div>
+          ${ref.doi ? `<p class="meta"><a href="https://doi.org/${ref.doi}" target="_blank" rel="noopener noreferrer">DOI: ${ref.doi}</a></p>` : ''}
+          ${ref.abstract ? `<p class="abstract">${escapeHtml(ref.abstract.substring(0, 300))}${ref.abstract.length > 300 ? '...' : ''}</p>` : ''}
+        </article>
+      `).join('');
+    }
+
+    if (media.length > 0) {
+      html += `<h3 class="section-subheading">Media (${media.length})</h3>`;
+      html += media.map(m => `
+        <article class="reference-card media-card" role="listitem">
+          <h3>${escapeHtml(m.title)}</h3>
+          <p class="meta"><a href="${escapeHtml(m.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(m.url)}</a></p>
+          ${m.description ? `<p class="description">${escapeHtml(m.description)}</p>` : ''}
+          <div class="tags">
+            ${m.taxonomies?.map(t => `
+              <span class="tag" style="background: ${t.color}; color: white;">${escapeHtml(t.name)}</span>
+            `).join('') || ''}
+          </div>
+        </article>
+      `).join('');
+    }
+
+    content.innerHTML = html;
+  } catch (err) {
+    content.innerHTML = `<p>Error loading references: ${err.message}</p>`;
   }
 }
 
