@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BibMap</title>
+  <script type="module" crossorigin src="/bibmaps/assets/index-CmOjKEt5.js"></script>
+  <link rel="stylesheet" crossorigin href="/bibmaps/assets/index-uJlrghnb.css">
+</head>
+<body>
+  <div id="app">
+    <header role="banner">
+      <h1>BibMap</h1>
+      <nav role="navigation" aria-label="Main navigation">
+        <button id="nav-bibmaps" class="nav-btn active" aria-pressed="true">BibMaps</button>
+        <button id="nav-references" class="nav-btn" aria-pressed="false">References</button>
+        <button id="nav-media" class="nav-btn" aria-pressed="false">Media</button>
+        <button id="nav-taxonomies" class="nav-btn" aria-pressed="false">Tags</button>
+        <button id="nav-settings" class="nav-btn" aria-pressed="false" hidden>Settings</button>
+        <button id="nav-admin" class="nav-btn" aria-pressed="false" hidden>Admin</button>
+        <button id="nav-about" class="nav-btn" aria-pressed="false">About</button>
+      </nav>
+      <div id="user-controls">
+        <div id="user-info" role="status" aria-live="polite"></div>
+        <div id="auth-buttons">
+          <button id="auth-toggle-btn" class="btn-secondary btn-sm">Login</button>
+          <button id="register-btn" class="btn-primary btn-sm" hidden>Register</button>
+          <button id="profile-btn" class="btn-secondary btn-sm" hidden>Profile</button>
+        </div>
+      </div>
+    </header>
+
+    <main role="main">
+      <!-- BibMaps Section -->
+      <section id="bibmaps-section" class="section active" aria-labelledby="bibmaps-heading">
+        <div class="section-header">
+          <h2 id="bibmaps-heading">BibMaps</h2>
+          <div class="header-actions">
+            <button id="import-bibmap" class="btn-secondary">
+              <span aria-hidden="true">&#8593;</span> Import BibMap
+            </button>
+            <button id="create-bibmap" class="btn-primary">
+              <span aria-hidden="true">+</span> New BibMap
+            </button>
+          </div>
+        </div>
+        <div id="bibmaps-list" class="card-grid" role="list" aria-label="BibMaps"></div>
+        <!-- Hidden file input for importing .bibmap files -->
+        <input type="file" id="bibmap-file-input" accept=".bibmap,.zip" hidden>
+      </section>
+
+      <!-- BibMap Editor -->
+      <section id="editor-section" class="section" aria-labelledby="editor-heading" hidden>
+        <div class="editor-toolbar" role="toolbar" aria-label="BibMap editing tools">
+          <button id="back-to-list" class="btn-secondary" aria-label="Back to BibMaps list">
+            &larr; Back
+          </button>
+          <h2 id="editor-heading" class="editor-title"></h2>
+          <div class="tool-group">
+            <button id="add-node" class="tool-btn" aria-label="Add new node" title="Add Node">
+              <span aria-hidden="true">&#43;</span>
+            </button>
+            <button id="connect-mode" class="tool-btn" aria-label="Toggle connection mode" title="Connect Nodes" aria-pressed="false">
+              <span aria-hidden="true">&#8594;</span>
+            </button>
+            <button id="duplicate-btn" class="tool-btn" aria-label="Duplicate selected" title="Duplicate" disabled>
+              <span aria-hidden="true">&#10697;</span>
+            </button>
+            <button id="delete-btn" class="tool-btn tool-btn-danger" aria-label="Delete selected" title="Delete" disabled>
+              <span aria-hidden="true">&#128465;</span>
+            </button>
+            <label class="toggle-label-toolbar" for="snap-to-grid">
+              <input type="checkbox" id="snap-to-grid" aria-label="Grid snap">
+              <span>Grid Snap</span>
+            </label>
+          </div>
+          <div class="tool-group publish-group">
+            <button id="edit-bibmap" class="tool-btn" aria-label="Edit BibMap details" title="Edit Details">
+              <span aria-hidden="true">&#9998;</span>
+            </button>
+            <label class="toggle-label" for="show-legend-toggle">
+              <input type="checkbox" id="show-legend-toggle" aria-label="Show legend">
+              <span class="toggle-text">Legend</span>
+            </label>
+            <label class="toggle-label" for="publish-toggle">
+              <input type="checkbox" id="publish-toggle" aria-label="Publish this BibMap">
+              <span class="toggle-text">Published</span>
+            </label>
+            <button id="copy-link" class="tool-btn" aria-label="Copy shareable link" title="Copy Link" disabled>
+              <span aria-hidden="true">&#128279;</span>
+            </button>
+            <button id="close-bibmap" class="tool-btn tool-btn-danger" aria-label="Close this BibMap" title="Close BibMap">
+              <span aria-hidden="true">&times;</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Accessible BibMap canvas -->
+        <div id="bibmap-container" role="application" aria-label="BibMap canvas. Use arrow keys to navigate between nodes, Enter to select, Delete to remove.">
+          <svg id="bibmap-svg" aria-hidden="true">
+            <defs>
+              <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                <polygon points="0 0, 10 3.5, 0 7" fill="#6B7280"/>
+              </marker>
+            </defs>
+            <g id="connections-layer"></g>
+            <g id="nodes-layer"></g>
+          </svg>
+          <!-- Screen reader accessible node list -->
+          <div id="sr-node-list" class="sr-only" role="list" aria-label="BibMap nodes"></div>
+
+          <!-- Legend Panel -->
+          <div id="legend-panel" class="legend-panel" role="region" aria-label="BibMap legend" hidden>
+            <h4 class="legend-title">Legend</h4>
+            <ul id="legend-items" class="legend-items" role="list" aria-label="Legend categories"></ul>
+          </div>
+        </div>
+
+        <!-- Editor Panels Container -->
+        <div class="editor-panels">
+          <!-- Node Properties Panel -->
+          <aside id="properties-panel" class="panel" aria-labelledby="properties-heading" hidden>
+            <div class="panel-header">
+              <h3 id="properties-heading">Node Properties</h3>
+              <button type="button" id="delete-node" class="btn-icon btn-danger-icon" aria-label="Delete node" title="Delete node">
+                <span aria-hidden="true">&#128465;</span>
+              </button>
+            </div>
+            <div id="node-properties-form">
+              <div class="form-group">
+                <label for="prop-label">Text Label</label>
+                <input type="text" id="prop-label" required>
+              </div>
+              <div class="form-group">
+                <label class="toggle-label-inline" for="prop-wrap-text">
+                  <input type="checkbox" id="prop-wrap-text" checked>
+                  <span>Wrap text to node size</span>
+                </label>
+              </div>
+              <div class="form-group">
+                <label>Category</label>
+                <div id="category-selector" class="category-selector">
+                  <div id="existing-categories" class="existing-categories"></div>
+                  <label class="category-option new-category-option" title="New category">
+                    <input type="color" id="prop-bg-color" class="category-color-picker">
+                  </label>
+                </div>
+              </div>
+              <div class="form-group">
+                <label for="prop-description">Description</label>
+                <textarea id="prop-description" rows="3"></textarea>
+              </div>
+              <div class="form-group">
+                <div class="text-style-controls">
+                  <select id="prop-font-family" aria-label="Font family">
+                    <option value="system-ui">System</option>
+                    <option value="Arial, sans-serif">Arial</option>
+                    <option value="Georgia, serif">Georgia</option>
+                    <option value="monospace">Monospace</option>
+                  </select>
+                  <input type="number" id="prop-font-size" min="8" max="48" value="14" aria-label="Font size" title="Font size">
+                  <button type="button" id="prop-bold" class="style-btn" aria-label="Bold" title="Bold"><b>B</b></button>
+                  <button type="button" id="prop-italic" class="style-btn" aria-label="Italic" title="Italic"><i>I</i></button>
+                  <button type="button" id="prop-underline" class="style-btn" aria-label="Underline" title="Underline"><u>U</u></button>
+                  <button type="button" id="prop-text-color-btn" class="style-btn text-color-btn" aria-label="Text color" title="Text color">
+                    <span class="text-color-icon">A</span>
+                    <span class="text-color-bar" id="text-color-bar"></span>
+                    <input type="color" id="prop-text-color" class="hidden-color-input" tabindex="-1">
+                  </button>
+                </div>
+              </div>
+              <div class="form-group">
+                <select id="prop-shape" aria-label="Node shape">
+                  <option value="rectangle">Rectangle</option>
+                  <option value="rounded-rectangle">Rounded Rectangle</option>
+                  <option value="ellipse">Ellipse</option>
+                  <option value="diamond">Diamond</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <select id="prop-node-style" aria-label="Node style">
+                  <option value="flat">Flat</option>
+                  <option value="bevel">Bevel</option>
+                  <option value="emboss">Emboss</option>
+                  <option value="outline">Outline</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <div class="tag-input-container" id="node-tag-input-container">
+                  <div class="selected-tags" id="node-selected-tags"></div>
+                  <input type="text" id="node-tag-search" class="tag-search-input" placeholder="Type to add tags..." autocomplete="off">
+                  <div class="tag-suggestions" id="node-tag-suggestions" hidden></div>
+                </div>
+              </div>
+              <div class="form-group" id="link-refs-group">
+                <label class="toggle-label-inline" for="prop-link-refs">
+                  <input type="checkbox" id="prop-link-refs" disabled>
+                  <span>Link to References</span>
+                </label>
+                <p class="help-text" id="link-refs-help">Add tags or set a legend category to enable linking</p>
+              </div>
+            </div>
+            <div id="node-references" hidden>
+              <a href="#" id="node-refs-link" class="refs-link btn-secondary btn-sm">View Linked Items (<span id="node-refs-count">0</span>)</a>
+            </div>
+          </aside>
+
+          <!-- Connection Properties Panel -->
+          <aside id="connection-panel" class="panel" aria-labelledby="connection-heading" hidden>
+            <div class="panel-header">
+              <h3 id="connection-heading">Connection Properties</h3>
+              <button type="button" id="delete-connection" class="btn-icon btn-danger-icon" aria-label="Delete connection" title="Delete connection">
+                <span aria-hidden="true">&#128465;</span>
+              </button>
+            </div>
+            <div id="connection-properties-form">
+              <div class="form-group">
+                <label for="conn-label">Label</label>
+                <input type="text" id="conn-label" placeholder="Optional label">
+              </div>
+              <div class="form-group">
+                <label class="toggle-label-inline" for="conn-show-label">
+                  <input type="checkbox" id="conn-show-label">
+                  <span>Show connection label</span>
+                </label>
+              </div>
+              <div class="form-group-inline">
+                <label for="conn-line-color">Color</label>
+                <input type="color" id="conn-line-color" value="#6B7280">
+                <label for="conn-line-width">Thickness</label>
+                <input type="number" id="conn-line-width" min="1" max="10" value="2" class="line-width-input">
+              </div>
+              <div class="form-group">
+                <label for="conn-line-style">Style</label>
+                <select id="conn-line-style">
+                  <option value="solid">Solid</option>
+                  <option value="dashed">Dashed</option>
+                  <option value="dotted">Dotted</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="conn-arrow-type">Arrow</label>
+                <select id="conn-arrow-type">
+                  <option value="end">End</option>
+                  <option value="both">Both</option>
+                  <option value="none">None</option>
+                </select>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- References Section -->
+      <section id="references-section" class="section" aria-labelledby="references-heading" hidden>
+        <div class="section-header">
+          <h2 id="references-heading">All Academic References</h2>
+          <div class="header-actions">
+            <button id="import-bibtex" class="btn-primary">
+              <span aria-hidden="true">&#8593;</span> Import BibTeX
+            </button>
+            <button id="close-active-bibmap-refs" class="btn-secondary btn-danger-text close-active-bibmap-btn" aria-label="Close active BibMap" disabled>
+              &times; Close BibMap
+            </button>
+          </div>
+        </div>
+        <div class="filter-bar">
+          <div class="filter-group">
+            <label for="ref-title-filter">Search:</label>
+            <input type="text" id="ref-title-filter" placeholder="Filter by title or author..." class="filter-input">
+          </div>
+          <div class="filter-group">
+            <label for="ref-taxonomy-filter">Tag:</label>
+            <select id="ref-taxonomy-filter">
+              <option value="">All</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label for="ref-sort">Sort by:</label>
+            <select id="ref-sort">
+              <option value="imported-desc">Date Imported (Newest)</option>
+              <option value="imported-asc">Date Imported (Oldest)</option>
+              <option value="year-desc">Publication Year (Newest)</option>
+              <option value="year-asc">Publication Year (Oldest)</option>
+              <option value="title-asc">Title (A-Z)</option>
+              <option value="title-desc">Title (Z-A)</option>
+              <option value="author-asc">Author (A-Z)</option>
+              <option value="author-desc">Author (Z-A)</option>
+            </select>
+          </div>
+        </div>
+        <div id="references-list" class="references-grid" role="list" aria-label="References"></div>
+        <div class="pagination-bar">
+          <div class="pagination-info">
+            <span id="ref-pagination-info">Showing 0 of 0 references</span>
+          </div>
+          <div class="pagination-controls">
+            <button id="ref-prev-page" class="btn-secondary btn-sm" disabled>&larr; Previous</button>
+            <span id="ref-page-indicator">Page 1</span>
+            <button id="ref-next-page" class="btn-secondary btn-sm" disabled>Next &rarr;</button>
+          </div>
+          <div class="pagination-size">
+            <label for="ref-page-size">Show:</label>
+            <select id="ref-page-size">
+              <option value="20" selected>20</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+              <option value="200">200</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <!-- Media Section -->
+      <section id="media-section" class="section" aria-labelledby="media-heading" hidden>
+        <div class="section-header">
+          <h2 id="media-heading">All Media Links</h2>
+          <div class="header-actions">
+            <button id="add-media" class="btn-primary">
+              <span aria-hidden="true">+</span> Add Media
+            </button>
+            <button id="close-active-bibmap-media" class="btn-secondary btn-danger-text close-active-bibmap-btn" aria-label="Close active BibMap" disabled>
+              &times; Close BibMap
+            </button>
+          </div>
+        </div>
+        <div class="filter-bar">
+          <div class="filter-group">
+            <label for="media-title-filter">Search:</label>
+            <input type="text" id="media-title-filter" placeholder="Filter by title..." class="filter-input">
+          </div>
+          <div class="filter-group">
+            <label for="media-taxonomy-filter">Tag:</label>
+            <select id="media-taxonomy-filter">
+              <option value="">All</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label for="media-sort">Sort by:</label>
+            <select id="media-sort">
+              <option value="created-desc">Date Added (Newest)</option>
+              <option value="created-asc">Date Added (Oldest)</option>
+              <option value="title-asc">Title (A-Z)</option>
+              <option value="title-desc">Title (Z-A)</option>
+            </select>
+          </div>
+        </div>
+        <div id="media-list" class="references-grid" role="list" aria-label="Media"></div>
+        <div class="pagination-bar">
+          <div class="pagination-info">
+            <span id="media-pagination-info">Showing 0 of 0 media</span>
+          </div>
+          <div class="pagination-controls">
+            <button id="media-prev-page" class="btn-secondary btn-sm" disabled>&larr; Previous</button>
+            <span id="media-page-indicator">Page 1</span>
+            <button id="media-next-page" class="btn-secondary btn-sm" disabled>Next &rarr;</button>
+          </div>
+          <div class="pagination-size">
+            <label for="media-page-size">Show:</label>
+            <select id="media-page-size">
+              <option value="20" selected>20</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tags Section -->
+      <section id="taxonomies-section" class="section" aria-labelledby="taxonomies-heading" hidden>
+        <div class="section-header">
+          <h2 id="taxonomies-heading">All Tags</h2>
+          <div class="header-actions">
+            <button id="create-taxonomy" class="btn-primary">
+              <span aria-hidden="true">+</span> New Tag
+            </button>
+            <button id="close-active-bibmap-tags" class="btn-secondary btn-danger-text close-active-bibmap-btn" aria-label="Close active BibMap" disabled>
+              &times; Close BibMap
+            </button>
+          </div>
+        </div>
+        <div class="filter-bar">
+          <div class="filter-group">
+            <label for="tax-name-filter">Search:</label>
+            <input type="text" id="tax-name-filter" placeholder="Filter by name..." class="filter-input">
+          </div>
+          <div class="filter-group">
+            <label for="tax-sort">Sort by:</label>
+            <select id="tax-sort">
+              <option value="created-desc">Date Added (Newest)</option>
+              <option value="created-asc">Date Added (Oldest)</option>
+              <option value="modified-desc">Date Modified (Newest)</option>
+              <option value="modified-asc">Date Modified (Oldest)</option>
+              <option value="name-asc">Name (A-Z)</option>
+              <option value="name-desc">Name (Z-A)</option>
+            </select>
+          </div>
+        </div>
+        <div id="taxonomies-list" class="card-grid" role="list" aria-label="Tags"></div>
+      </section>
+
+      <!-- Node References Section (full page view) -->
+      <section id="node-refs-section" class="section" aria-labelledby="node-refs-heading" hidden>
+        <div class="section-header">
+          <button id="back-to-editor" class="btn-secondary" aria-label="Back to BibMap editor">
+            &larr; Back to Editor
+          </button>
+          <h2 id="node-refs-heading">References &amp; Media for "<span id="node-refs-node-name"></span>"</h2>
+        </div>
+        <p id="node-refs-description" class="section-description"></p>
+        <div id="node-refs-page-content" class="references-grid" role="list" aria-label="Node References"></div>
+      </section>
+
+      <!-- Admin Section -->
+      <section id="admin-section" class="section" aria-labelledby="admin-heading" hidden>
+        <div class="section-header">
+          <h2 id="admin-heading">User Management</h2>
+          <button id="create-user" class="btn-primary">
+            <span aria-hidden="true">+</span> New User
+          </button>
+        </div>
+        <div class="filter-bar">
+          <div class="filter-group">
+            <label for="user-search">Search:</label>
+            <input type="text" id="user-search" placeholder="Search by name or email..." class="filter-input">
+          </div>
+        </div>
+        <div id="users-list" class="card-grid" role="list" aria-label="Users"></div>
+      </section>
+
+      <!-- Settings Section -->
+      <section id="settings-section" class="section" aria-labelledby="settings-heading" hidden>
+        <div class="section-header">
+          <h2 id="settings-heading">Settings</h2>
+          <button id="reset-settings" class="btn-secondary">Reset to Defaults</button>
+        </div>
+
+        <div class="settings-container">
+          <!-- Display Preferences -->
+          <div class="settings-group">
+            <h3>Display Preferences</h3>
+            <div class="form-group">
+              <label for="setting-theme">Theme:</label>
+              <select id="setting-theme">
+                <option value="system">System Default</option>
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Node Defaults -->
+          <div class="settings-group">
+            <h3>Default Node Styles</h3>
+            <div class="form-group-inline">
+              <label for="setting-node-color">Background:</label>
+              <input type="color" id="setting-node-color" value="#3B82F6">
+              <label for="setting-text-color">Text:</label>
+              <input type="color" id="setting-text-color" value="#FFFFFF">
+            </div>
+            <div class="form-group">
+              <label for="setting-node-shape">Shape:</label>
+              <select id="setting-node-shape">
+                <option value="rectangle">Rectangle</option>
+                <option value="rounded-rectangle">Rounded Rectangle</option>
+                <option value="ellipse">Ellipse</option>
+                <option value="diamond">Diamond</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Editor Preferences -->
+          <div class="settings-group">
+            <h3>Editor Preferences</h3>
+            <div class="form-group">
+              <label class="toggle-label-inline" for="setting-snap-grid">
+                <input type="checkbox" id="setting-snap-grid">
+                <span>Snap to Grid</span>
+              </label>
+            </div>
+            <div class="form-group">
+              <label for="setting-grid-size">Grid Size:</label>
+              <input type="number" id="setting-grid-size" min="5" max="100" value="20" class="number-input">
+            </div>
+            <div class="form-group">
+              <label class="toggle-label-inline" for="setting-auto-save">
+                <input type="checkbox" id="setting-auto-save" checked>
+                <span>Auto-save changes</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Reference Display -->
+          <div class="settings-group">
+            <h3>Reference Display</h3>
+            <div class="form-group">
+              <label for="setting-refs-page-size">References per Page:</label>
+              <select id="setting-refs-page-size">
+                <option value="20">20</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+                <option value="200">200</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="setting-refs-sort">Default Sort:</label>
+              <select id="setting-refs-sort">
+                <option value="imported-desc">Date Imported (Newest)</option>
+                <option value="imported-asc">Date Imported (Oldest)</option>
+                <option value="year-desc">Publication Year (Newest)</option>
+                <option value="year-asc">Publication Year (Oldest)</option>
+                <option value="title-asc">Title (A-Z)</option>
+                <option value="title-desc">Title (Z-A)</option>
+                <option value="author-asc">Author (A-Z)</option>
+                <option value="author-desc">Author (Z-A)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Notifications -->
+          <div class="settings-group">
+            <h3>Notifications</h3>
+            <div class="form-group">
+              <label class="toggle-label-inline" for="setting-email-notifications">
+                <input type="checkbox" id="setting-email-notifications" checked>
+                <span>Email Notifications</span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- About Section -->
+      <section id="about-section" class="section" aria-labelledby="about-heading" hidden>
+        <div class="about-content">
+          <h2 id="about-heading">About BibMap</h2>
+          <p class="about-tagline">Visual Bibliography Mapping for Researchers</p>
+
+          <div class="about-description">
+            <p>BibMap is a visual tool designed to help researchers, academics, and students organize and explore their bibliographic references through interactive mind maps.</p>
+
+            <h3>Features</h3>
+            <ul>
+              <li><strong>Visual Mapping</strong> - Create visual maps to organize your research topics and concepts</li>
+              <li><strong>Reference Management</strong> - Import and manage academic references from BibTeX files</li>
+              <li><strong>Smart Tagging</strong> - Tag nodes and references for easy cross-referencing</li>
+              <li><strong>Linked References</strong> - Connect nodes to relevant references automatically based on tags</li>
+              <li><strong>Export &amp; Share</strong> - Export your BibMaps and share published maps with others</li>
+            </ul>
+
+            <h3>Getting Started</h3>
+            <ol>
+              <li>Create a new BibMap from the BibMaps page</li>
+              <li>Add nodes to represent your research topics or concepts</li>
+              <li>Import your references using BibTeX format</li>
+              <li>Tag your nodes and references to link them together</li>
+              <li>Use connections to show relationships between concepts</li>
+            </ol>
+
+            <h3>Keyboard Shortcuts</h3>
+            <ul class="shortcuts-list">
+              <li><kbd>Arrow Keys</kbd> - Navigate between nodes</li>
+              <li><kbd>Enter</kbd> - Select node</li>
+              <li><kbd>Escape</kbd> - Deselect / Cancel</li>
+              <li><kbd>Double-click</kbd> - Reset zoom</li>
+            </ul>
+          </div>
+
+          <p class="about-version">Version 1.0.0</p>
+        </div>
+      </section>
+    </main>
+
+    <!-- Modals -->
+    <div id="modal-overlay" class="modal-overlay" hidden>
+      <!-- Create/Edit BibMap Modal -->
+      <dialog id="create-bibmap-modal" class="modal" aria-labelledby="create-bm-title">
+        <div class="panel-header">
+          <h2 id="create-bm-title">Create BibMap</h2>
+          <button type="button" id="delete-bibmap-btn" class="btn-icon btn-danger-icon" aria-label="Delete BibMap" title="Delete BibMap" hidden>
+            <span aria-hidden="true">&#128465;</span>
+          </button>
+        </div>
+        <form id="create-bibmap-form">
+          <div class="form-group">
+            <label for="bm-title">Title:</label>
+            <input type="text" id="bm-title" required>
+          </div>
+          <div class="form-group">
+            <label for="bm-description">Description:</label>
+            <textarea id="bm-description" rows="3"></textarea>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn-primary" id="bm-submit-btn">Create</button>
+            <button type="button" class="btn-secondary modal-close">Cancel</button>
+          </div>
+        </form>
+      </dialog>
+
+      <!-- Import BibTeX Modal -->
+      <dialog id="import-bibtex-modal" class="modal modal-lg" aria-labelledby="import-bibtex-title">
+        <h2 id="import-bibtex-title">Import BibTeX References</h2>
+        <form id="import-bibtex-form">
+          <div class="form-group">
+            <label for="bibtex-file">Upload BibTeX file:</label>
+            <input type="file" id="bibtex-file" accept=".bib,.bibtex,.txt" class="file-input">
+          </div>
+          <div class="form-group">
+            <label for="bibtex-content">Or paste BibTeX content:</label>
+            <textarea id="bibtex-content" rows="10" placeholder="@article{key,
+  author = {Author Name},
+  title = {Paper Title},
+  ...
+}"></textarea>
+          </div>
+          <div class="form-group">
+            <label>Apply tags:</label>
+            <div class="tag-input-container" id="import-tag-input-container">
+              <div class="selected-tags" id="import-selected-tags"></div>
+              <input type="text" id="import-tag-search" class="tag-search-input" placeholder="Type to add tags..." autocomplete="off">
+              <div class="tag-suggestions" id="import-tag-suggestions" hidden></div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="import-legend-category">Legend Category:</label>
+            <select id="import-legend-category" class="legend-category-select">
+              <option value="">None</option>
+            </select>
+            <p class="help-text">Assign all imported references to this legend category</p>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn-primary">Import</button>
+            <button type="button" class="btn-secondary modal-close">Cancel</button>
+          </div>
+        </form>
+        <div id="import-result" hidden>
+          <h3>Import Results</h3>
+          <p id="import-summary"></p>
+          <div id="import-duplicates" hidden>
+            <h4>Duplicates Found (skipped to protect existing data):</h4>
+            <ul id="import-duplicates-list"></ul>
+          </div>
+          <div id="import-errors-container" hidden>
+            <h4>Errors:</h4>
+            <ul id="import-errors"></ul>
+          </div>
+        </div>
+      </dialog>
+
+      <!-- Create/Edit Tag Modal -->
+      <dialog id="create-taxonomy-modal" class="modal" aria-labelledby="create-tax-title">
+        <h2 id="create-tax-title">Create Tag</h2>
+        <form id="create-taxonomy-form">
+          <div class="form-group">
+            <label for="tax-name">Name:</label>
+            <input type="text" id="tax-name" required>
+          </div>
+          <div class="form-group">
+            <label for="tax-description">Description:</label>
+            <textarea id="tax-description" rows="2"></textarea>
+          </div>
+          <div class="form-group">
+            <label for="tax-color">Color:</label>
+            <input type="color" id="tax-color" value="#6B7280">
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn-primary" id="tax-submit-btn">Create</button>
+            <button type="button" class="btn-secondary modal-close">Cancel</button>
+          </div>
+        </form>
+      </dialog>
+
+      <!-- Confirmation Modal -->
+      <dialog id="confirm-modal" class="modal modal-confirm" aria-labelledby="confirm-title">
+        <h2 id="confirm-title">Confirm</h2>
+        <p id="confirm-message"></p>
+        <div class="form-actions">
+          <button type="button" id="confirm-yes" class="btn-danger">Delete</button>
+          <button type="button" id="confirm-no" class="btn-secondary">Cancel</button>
+        </div>
+      </dialog>
+
+      <!-- Reference Detail Modal -->
+      <dialog id="reference-detail-modal" class="modal modal-lg" aria-labelledby="ref-detail-title">
+        <h2 id="ref-detail-title">Reference Details</h2>
+        <div id="reference-detail-content"></div>
+        <div class="form-group">
+          <label>Tags:</label>
+          <div class="tag-input-container" id="ref-tag-input-container">
+            <div class="selected-tags" id="ref-selected-tags"></div>
+            <input type="text" id="ref-tag-search" class="tag-search-input" placeholder="Type to add tags..." autocomplete="off">
+            <div class="tag-suggestions" id="ref-tag-suggestions" hidden></div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="ref-legend-category">Legend Category:</label>
+          <select id="ref-legend-category" class="legend-category-select">
+            <option value="">None</option>
+          </select>
+          <p class="help-text">Assign to a legend category to link with nodes of the same color</p>
+        </div>
+        <div class="form-group" id="edit-bibtex-section">
+          <details>
+            <summary>Edit BibTeX</summary>
+            <textarea id="ref-edit-bibtex" rows="10" class="bibtex-editor"></textarea>
+            <div class="form-actions">
+              <button type="button" id="update-bibtex-btn" class="btn-primary btn-sm">Update from BibTeX</button>
+            </div>
+          </details>
+        </div>
+        <div class="form-actions">
+          <button type="button" id="delete-reference-btn" class="btn-danger">Delete Reference</button>
+          <button type="button" class="btn-secondary modal-close">Close</button>
+        </div>
+      </dialog>
+
+      <!-- Create/Edit Media Modal -->
+      <dialog id="media-modal" class="modal" aria-labelledby="media-modal-title">
+        <div class="panel-header">
+          <h2 id="media-modal-title">Add Media</h2>
+          <button type="button" id="delete-media-btn" class="btn-icon btn-danger-icon" aria-label="Delete Media" title="Delete Media" hidden>
+            <span aria-hidden="true">&#128465;</span>
+          </button>
+        </div>
+        <form id="media-form">
+          <div class="form-group">
+            <label for="media-title">Title:</label>
+            <input type="text" id="media-title" required placeholder="Enter a title for this media">
+          </div>
+          <div class="form-group">
+            <label for="media-url">URL:</label>
+            <input type="url" id="media-url" required placeholder="https://example.com/resource">
+          </div>
+          <div class="form-group">
+            <label for="media-description">Description (optional):</label>
+            <textarea id="media-description" rows="2" placeholder="Brief description of this media"></textarea>
+          </div>
+          <div class="form-group">
+            <label>Tags:</label>
+            <div class="tag-input-container" id="media-tag-input-container">
+              <div class="selected-tags" id="media-selected-tags"></div>
+              <input type="text" id="media-tag-search" class="tag-search-input" placeholder="Type to add tags..." autocomplete="off">
+              <div class="tag-suggestions" id="media-tag-suggestions" hidden></div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="media-legend-category">Legend Category:</label>
+            <select id="media-legend-category" class="legend-category-select">
+              <option value="">None</option>
+            </select>
+            <p class="help-text">Assign to a legend category to link with nodes of the same color</p>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn-primary" id="media-submit-btn">Add</button>
+            <button type="button" class="btn-secondary modal-close">Cancel</button>
+          </div>
+        </form>
+      </dialog>
+
+      <!-- Login Modal -->
+      <dialog id="login-modal" class="modal" aria-labelledby="login-title">
+        <h2 id="login-title">Login</h2>
+        <form id="login-form">
+          <div class="form-group">
+            <label for="login-username">Username or Email:</label>
+            <input type="text" id="login-username" required autocomplete="username">
+          </div>
+          <div class="form-group">
+            <label for="login-password">Password:</label>
+            <input type="password" id="login-password" required autocomplete="current-password">
+          </div>
+          <div id="login-error" class="error-message" hidden></div>
+          <div class="form-actions">
+            <button type="submit" class="btn-primary">Login</button>
+            <button type="button" class="btn-secondary modal-close">Cancel</button>
+          </div>
+          <div id="login-google-section" class="oauth-section" hidden>
+            <div class="oauth-divider"><span>or</span></div>
+            <button type="button" id="google-login-btn" class="btn-oauth btn-google">
+              <svg class="google-icon" viewBox="0 0 24 24" width="18" height="18">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+              </svg>
+              Continue with Google
+            </button>
+          </div>
+          <p class="modal-footer-text">Don't have an account? <a href="#" id="switch-to-register">Register here</a></p>
+        </form>
+      </dialog>
+
+      <!-- Register Modal -->
+      <dialog id="register-modal" class="modal" aria-labelledby="register-title">
+        <h2 id="register-title">Create Account</h2>
+        <form id="register-form">
+          <div class="form-group">
+            <label for="register-email">Email:</label>
+            <input type="email" id="register-email" required autocomplete="email">
+          </div>
+          <div class="form-group">
+            <label for="register-username">Username:</label>
+            <input type="text" id="register-username" required autocomplete="username" pattern="[a-zA-Z0-9_-]+" title="Letters, numbers, underscores, and hyphens only">
+          </div>
+          <div class="form-group">
+            <label for="register-display-name">Display Name (optional):</label>
+            <input type="text" id="register-display-name" autocomplete="name">
+          </div>
+          <div class="form-group">
+            <label for="register-password">Password:</label>
+            <input type="password" id="register-password" required autocomplete="new-password" minlength="8">
+          </div>
+          <div class="form-group">
+            <label for="register-confirm-password">Confirm Password:</label>
+            <input type="password" id="register-confirm-password" required autocomplete="new-password">
+          </div>
+          <div id="register-error" class="error-message" hidden></div>
+          <div class="form-actions">
+            <button type="submit" class="btn-primary">Register</button>
+            <button type="button" class="btn-secondary modal-close">Cancel</button>
+          </div>
+          <div id="register-google-section" class="oauth-section" hidden>
+            <div class="oauth-divider"><span>or</span></div>
+            <button type="button" id="google-register-btn" class="btn-oauth btn-google">
+              <svg class="google-icon" viewBox="0 0 24 24" width="18" height="18">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+              </svg>
+              Sign up with Google
+            </button>
+          </div>
+          <p class="modal-footer-text">Already have an account? <a href="#" id="switch-to-login">Login here</a></p>
+        </form>
+      </dialog>
+
+      <!-- Profile Modal -->
+      <dialog id="profile-modal" class="modal" aria-labelledby="profile-title">
+        <h2 id="profile-title">Your Profile</h2>
+        <form id="profile-form">
+          <div class="form-group">
+            <label for="profile-email">Email:</label>
+            <input type="email" id="profile-email" required>
+          </div>
+          <div class="form-group">
+            <label for="profile-display-name">Display Name:</label>
+            <input type="text" id="profile-display-name">
+          </div>
+          <div class="form-group">
+            <p><strong>Username:</strong> <span id="profile-username"></span></p>
+            <p><strong>Role:</strong> <span id="profile-role"></span></p>
+          </div>
+          <div id="profile-error" class="error-message" hidden></div>
+          <div class="form-actions">
+            <button type="submit" class="btn-primary">Save Changes</button>
+            <button type="button" class="btn-secondary modal-close">Cancel</button>
+          </div>
+        </form>
+        <hr>
+        <h3>Change Password</h3>
+        <form id="change-password-form">
+          <div class="form-group">
+            <label for="current-password">Current Password:</label>
+            <input type="password" id="current-password" required autocomplete="current-password">
+          </div>
+          <div class="form-group">
+            <label for="new-password">New Password:</label>
+            <input type="password" id="new-password" required autocomplete="new-password" minlength="8">
+          </div>
+          <div class="form-group">
+            <label for="confirm-new-password">Confirm New Password:</label>
+            <input type="password" id="confirm-new-password" required autocomplete="new-password">
+          </div>
+          <div id="password-error" class="error-message" hidden></div>
+          <div class="form-actions">
+            <button type="submit" class="btn-primary">Change Password</button>
+          </div>
+        </form>
+      </dialog>
+
+      <!-- Create/Edit User Modal (Admin) -->
+      <dialog id="user-modal" class="modal" aria-labelledby="user-modal-title">
+        <h2 id="user-modal-title">Create User</h2>
+        <form id="user-form">
+          <div class="form-group">
+            <label for="user-email">Email:</label>
+            <input type="email" id="user-email" required>
+          </div>
+          <div class="form-group">
+            <label for="user-username">Username:</label>
+            <input type="text" id="user-username" required pattern="[a-zA-Z0-9_-]+">
+          </div>
+          <div class="form-group">
+            <label for="user-display-name">Display Name:</label>
+            <input type="text" id="user-display-name">
+          </div>
+          <div class="form-group" id="user-password-group">
+            <label for="user-password">Password:</label>
+            <input type="password" id="user-password" minlength="8">
+          </div>
+          <div class="form-group">
+            <label for="user-role">Role:</label>
+            <select id="user-role">
+              <option value="user">Standard User</option>
+              <option value="admin">Administrator</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="toggle-label-inline" for="user-active">
+              <input type="checkbox" id="user-active" checked>
+              <span>Active</span>
+            </label>
+          </div>
+          <div id="user-error" class="error-message" hidden></div>
+          <div class="form-actions">
+            <button type="submit" class="btn-primary" id="user-submit-btn">Create</button>
+            <button type="button" class="btn-secondary modal-close">Cancel</button>
+          </div>
+        </form>
+      </dialog>
+
+    </div>
+
+    <!-- Live region for announcements -->
+    <div id="announcer" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+  </div>
+
+</body>
+</html>
