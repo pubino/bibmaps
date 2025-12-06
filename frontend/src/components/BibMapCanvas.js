@@ -334,6 +334,7 @@ export class BibMapCanvas {
         return self.ensureArrowMarker(lineWidth, color, true);
       })
       .attr('fill', 'none')
+      .classed('selected', d => this.selectedConnection && d.id === this.selectedConnection.id)
       .on('click', (event, d) => {
         event.stopPropagation();
         this.selectConnection(d, event);
@@ -1123,12 +1124,18 @@ export class BibMapCanvas {
     this.selectedConnection = connection;
     this.clearSelection();
 
+    // Apply selected class to connection line
+    this.connectionsLayer.selectAll('.connection-line')
+      .classed('selected', d => d.id === connection.id);
+
     this.onConnectionSelect(connection);
     this.announce(`Selected connection. Click delete to remove.`);
   }
 
   clearConnectionSelection() {
     this.selectedConnection = null;
+    // Remove selected class from all connections
+    this.connectionsLayer.selectAll('.connection-line').classed('selected', false);
     this.onConnectionSelect(null);
   }
 

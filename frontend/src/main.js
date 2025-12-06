@@ -56,6 +56,10 @@ let confirmResolver = null;
 // Current user state
 let currentUser = null;
 
+// Legend state
+let showLegend = false;
+let legendLabels = {}; // Maps background color -> user-defined label
+
 // DOM Elements
 const sections = {
   bibmaps: document.getElementById('bibmaps-section'),
@@ -1187,6 +1191,11 @@ async function openBibMapEditor(bibmapId) {
     publishToggle.checked = currentBibmap.is_published || false;
     copyLinkBtn.hidden = !currentBibmap.is_published;
 
+    // Load legend state from metadata and update UI
+    loadLegendState();
+    document.getElementById('show-legend-toggle').checked = showLegend;
+    updateLegend();
+
     announce(`Opened BibMap: ${currentBibmap.title}`);
   } catch (err) {
     announce(`Error loading BibMap: ${err.message}`);
@@ -1240,6 +1249,169 @@ function updateToolbarButtons() {
   document.getElementById('delete-btn').disabled = !hasSelection;
 }
 
+// Legend functions
+const LEGEND_PATTERNS = ['stripes', 'dots', 'crosshatch', 'dashes', 'waves'];
+
+function getPatternForIndex(index) {
+  return LEGEND_PATTERNS[index % LEGEND_PATTERNS.length];
+}
+
+function updateLegend() {
+  const legendPanel = document.getElementById('legend-panel');
+  const legendItems = document.getElementById('legend-items');
+
+  if (!showLegend || !bibmapCanvas) {
+    legendPanel.hidden = true;
+    return;
+  }
+
+  // Collect unique background colors from nodes
+  const colorMap = new Map();
+  const nodes = bibmapCanvas.nodes || [];
+
+  nodes.forEach(node => {
+    const bgColor = (node.background_color || '#3B82F6').toUpperCase();
+    if (!colorMap.has(bgColor)) {
+      colorMap.set(bgColor, {
+        color: bgColor,
+        count: 1
+      });
+    } else {
+      colorMap.get(bgColor).count++;
+    }
+  });
+
+  // If no nodes or no unique colors, hide legend
+  if (colorMap.size === 0) {
+    legendPanel.hidden = true;
+    return;
+  }
+
+  // Sort colors by frequency (most used first)
+  const sortedColors = Array.from(colorMap.values())
+    .sort((a, b) => b.count - a.count);
+
+  // Generate placeholder labels for colors without user-defined labels
+  let categoryIndex = 1;
+  sortedColors.forEach(item => {
+    if (!legendLabels[item.color]) {
+      legendLabels[item.color] = `Category ${categoryIndex}`;
+    }
+    categoryIndex++;
+  });
+
+  // Clear and rebuild legend items
+  legendItems.innerHTML = '';
+
+  sortedColors.forEach((item, index) => {
+    const li = document.createElement('li');
+    li.className = 'legend-item';
+    li.dataset.color = item.color;
+
+    const pattern = getPatternForIndex(index);
+
+    li.innerHTML = `
+      <span class="legend-color-indicator"
+            style="background-color: ${item.color}"
+            data-pattern="${pattern}"
+            title="Pattern: ${pattern}"
+            aria-label="Color indicator with ${pattern} pattern"></span>
+      <span class="legend-label"
+            tabindex="0"
+            role="button"
+            aria-label="${legendLabels[item.color]}. Double-click to edit."
+            title="Double-click to edit">${legendLabels[item.color]}</span>
+    `;
+
+    legendItems.appendChild(li);
+  });
+
+  legendPanel.hidden = false;
+
+  // Save legend labels to bibmap
+  saveLegendLabels();
+}
+
+function saveLegendLabels() {
+  if (currentBibmap && currentBibmap.id) {
+    // Store legend labels in bibmap metadata
+    const metadata = currentBibmap.metadata ? JSON.parse(currentBibmap.metadata) : {};
+    metadata.legendLabels = legendLabels;
+    api.bibmaps.update(currentBibmap.id, { metadata: JSON.stringify(metadata) })
+      .catch(err => console.error('Failed to save legend labels:', err));
+  }
+}
+
+function saveShowLegendState() {
+  if (currentBibmap && currentBibmap.id) {
+    const metadata = currentBibmap.metadata ? JSON.parse(currentBibmap.metadata) : {};
+    metadata.showLegend = showLegend;
+    currentBibmap.metadata = JSON.stringify(metadata);
+    api.bibmaps.update(currentBibmap.id, { metadata: currentBibmap.metadata })
+      .catch(err => console.error('Failed to save legend visibility:', err));
+  }
+}
+
+function loadLegendState() {
+  if (currentBibmap && currentBibmap.metadata) {
+    try {
+      const metadata = JSON.parse(currentBibmap.metadata);
+      legendLabels = metadata.legendLabels || {};
+      showLegend = metadata.showLegend || false;
+    } catch (e) {
+      legendLabels = {};
+      showLegend = false;
+    }
+  } else {
+    legendLabels = {};
+    showLegend = false;
+  }
+}
+
+function startLegendLabelEdit(labelElement, color) {
+  const currentLabel = legendLabels[color] || 'Category';
+
+  // Create input element
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'legend-label-input';
+  input.value = currentLabel;
+  input.setAttribute('aria-label', 'Edit legend label');
+
+  // Replace span with input
+  labelElement.replaceWith(input);
+  input.focus();
+  input.select();
+
+  function finishEdit() {
+    const newLabel = input.value.trim() || currentLabel;
+    legendLabels[color] = newLabel;
+
+    // Create new span to replace input
+    const span = document.createElement('span');
+    span.className = 'legend-label';
+    span.tabIndex = 0;
+    span.role = 'button';
+    span.setAttribute('aria-label', `${newLabel}. Double-click to edit.`);
+    span.title = 'Double-click to edit';
+    span.textContent = newLabel;
+
+    input.replaceWith(span);
+    saveLegendLabels();
+  }
+
+  input.addEventListener('blur', finishEdit);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      input.blur();
+    } else if (e.key === 'Escape') {
+      input.value = currentLabel;
+      input.blur();
+    }
+  });
+}
+
 function showConnectionPanel(connection) {
   const panel = document.getElementById('connection-panel');
   panel.hidden = false;
@@ -1274,7 +1446,9 @@ function showPropertiesPanel(node) {
   document.getElementById('prop-label').value = node.label || '';
   document.getElementById('prop-description').value = node.description || '';
   document.getElementById('prop-bg-color').value = node.background_color || '#3B82F6';
-  document.getElementById('prop-text-color').value = node.text_color || '#FFFFFF';
+  const textColor = node.text_color || '#FFFFFF';
+  document.getElementById('prop-text-color').value = textColor;
+  document.getElementById('text-color-bar').style.backgroundColor = textColor;
   document.getElementById('prop-shape').value = node.shape || 'rectangle';
   document.getElementById('prop-node-style').value = node.node_style || 'flat';
   document.getElementById('prop-link-refs').checked = node.link_to_references !== false;
@@ -2051,12 +2225,13 @@ function setupEventListeners() {
     showSection('editor');
   });
 
-  document.getElementById('add-node').addEventListener('click', () => {
+  document.getElementById('add-node').addEventListener('click', async () => {
     if (bibmapCanvas) {
       // Add node at a random position in view
       const x = 100 + Math.random() * 400;
       const y = 100 + Math.random() * 300;
-      bibmapCanvas.addNode(x, y);
+      await bibmapCanvas.addNode(x, y);
+      updateLegend(); // Update legend after adding node
     }
   });
 
@@ -2104,6 +2279,7 @@ function setupEventListeners() {
         try {
           await bibmapCanvas.deleteNode(currentNodeId);
           hidePropertiesPanel();
+          updateLegend(); // Update legend after node deletion
         } catch (err) {
           announce(`Error: ${err.message}`);
         }
@@ -2164,6 +2340,40 @@ function setupEventListeners() {
     openEditBibMap();
   });
 
+  // Show Legend toggle
+  document.getElementById('show-legend-toggle').addEventListener('change', (e) => {
+    showLegend = e.target.checked;
+    updateLegend();
+    saveShowLegendState();
+  });
+
+  // Legend double-click to edit labels
+  document.getElementById('legend-items').addEventListener('dblclick', (e) => {
+    const labelElement = e.target.closest('.legend-label');
+    if (labelElement) {
+      const legendItem = labelElement.closest('.legend-item');
+      const color = legendItem?.dataset.color;
+      if (color) {
+        startLegendLabelEdit(labelElement, color);
+      }
+    }
+  });
+
+  // Legend keyboard support for editing (Enter key)
+  document.getElementById('legend-items').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      const labelElement = e.target.closest('.legend-label');
+      if (labelElement) {
+        e.preventDefault();
+        const legendItem = labelElement.closest('.legend-item');
+        const color = legendItem?.dataset.color;
+        if (color) {
+          startLegendLabelEdit(labelElement, color);
+        }
+      }
+    }
+  });
+
   // Node references link
   document.getElementById('node-refs-link').addEventListener('click', (e) => {
     e.preventDefault();
@@ -2183,9 +2393,12 @@ function setupEventListeners() {
 
   document.getElementById('prop-bg-color').addEventListener('input', (e) => {
     saveNodeProperty('background_color', e.target.value);
+    // Update legend when node color changes
+    updateLegend();
   });
 
   document.getElementById('prop-text-color').addEventListener('input', (e) => {
+    document.getElementById('text-color-bar').style.backgroundColor = e.target.value;
     saveNodeProperty('text_color', e.target.value);
   });
 
@@ -2251,6 +2464,7 @@ function setupEventListeners() {
       try {
         await bibmapCanvas.deleteNode(nodeId);
         hidePropertiesPanel();
+        updateLegend(); // Update legend after node deletion
       } catch (err) {
         announce(`Error: ${err.message}`);
       }
@@ -2690,6 +2904,11 @@ async function initShareView(bibmapId) {
           <g id="nodes-layer"></g>
         </svg>
         <div id="sr-node-list" class="sr-only" role="list" aria-label="BibMap nodes"></div>
+        <!-- Legend Panel for share view (read-only) -->
+        <div id="legend-panel" class="legend-panel" role="region" aria-label="BibMap legend" hidden>
+          <h4 class="legend-title">Legend</h4>
+          <ul id="legend-items" class="legend-items" role="list" aria-label="Legend categories"></ul>
+        </div>
       </div>
     </div>
   `;
@@ -2712,6 +2931,9 @@ async function initShareView(bibmapId) {
     canvas.connections = bibmap.connections || [];
     canvas.render();
     canvas.setReadOnly(true);
+
+    // Render legend if enabled in metadata
+    renderShareViewLegend(bibmap);
   } catch (err) {
     document.getElementById('share-title').textContent = 'BibMap not found';
     document.getElementById('bibmap-container').innerHTML = `
@@ -2721,6 +2943,69 @@ async function initShareView(bibmapId) {
       </div>
     `;
   }
+}
+
+// Render legend in share view (read-only)
+function renderShareViewLegend(bibmap) {
+  let metadata = {};
+  if (bibmap.metadata) {
+    try {
+      metadata = JSON.parse(bibmap.metadata);
+    } catch (e) {
+      return; // Invalid metadata, don't show legend
+    }
+  }
+
+  // Only show legend if it was enabled in the editor
+  if (!metadata.showLegend) {
+    return;
+  }
+
+  const legendLabelsData = metadata.legendLabels || {};
+  const nodes = bibmap.nodes || [];
+
+  // Collect unique background colors from nodes
+  const colorMap = new Map();
+  nodes.forEach(node => {
+    const bgColor = (node.background_color || '#3B82F6').toUpperCase();
+    if (!colorMap.has(bgColor)) {
+      colorMap.set(bgColor, { color: bgColor, count: 1 });
+    } else {
+      colorMap.get(bgColor).count++;
+    }
+  });
+
+  if (colorMap.size === 0) {
+    return;
+  }
+
+  // Sort colors by frequency
+  const sortedColors = Array.from(colorMap.values()).sort((a, b) => b.count - a.count);
+
+  // Build legend items
+  const legendItems = document.getElementById('legend-items');
+  legendItems.innerHTML = '';
+
+  let categoryIndex = 1;
+  sortedColors.forEach((item, index) => {
+    const label = legendLabelsData[item.color] || `Category ${categoryIndex}`;
+    const pattern = getPatternForIndex(index);
+
+    const li = document.createElement('li');
+    li.className = 'legend-item';
+    li.innerHTML = `
+      <span class="legend-color-indicator"
+            style="background-color: ${item.color}"
+            data-pattern="${pattern}"
+            title="Pattern: ${pattern}"
+            aria-label="Color indicator with ${pattern} pattern"></span>
+      <span class="legend-label-readonly">${label}</span>
+    `;
+    legendItems.appendChild(li);
+    categoryIndex++;
+  });
+
+  document.getElementById('legend-panel').hidden = false;
 }
 
 // Initialize

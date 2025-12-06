@@ -77,6 +77,10 @@
             <button id="edit-bibmap" class="tool-btn" aria-label="Edit BibMap details" title="Edit Details">
               <span aria-hidden="true">&#9998;</span> Edit Details
             </button>
+            <label class="toggle-label" for="show-legend-toggle">
+              <input type="checkbox" id="show-legend-toggle" aria-label="Show legend">
+              <span class="toggle-text">Show Legend</span>
+            </label>
             <label class="toggle-label" for="publish-toggle">
               <input type="checkbox" id="publish-toggle" aria-label="Publish this BibMap">
               <span class="toggle-text">Published</span>
@@ -100,6 +104,12 @@
           </svg>
           <!-- Screen reader accessible node list -->
           <div id="sr-node-list" class="sr-only" role="list" aria-label="BibMap nodes"></div>
+
+          <!-- Legend Panel -->
+          <div id="legend-panel" class="legend-panel" role="region" aria-label="BibMap legend" hidden>
+            <h4 class="legend-title">Legend</h4>
+            <ul id="legend-items" class="legend-items" role="list" aria-label="Legend categories"></ul>
+          </div>
         </div>
 
         <!-- Editor Panels Container -->
@@ -114,7 +124,7 @@
             </div>
             <div id="node-properties-form">
               <div class="form-group">
-                <label for="prop-label">Label:</label>
+                <label for="prop-label">Text Label:</label>
                 <input type="text" id="prop-label" required>
               </div>
               <div class="form-group">
@@ -128,10 +138,8 @@
                 <textarea id="prop-description" rows="3"></textarea>
               </div>
               <div class="form-group-inline">
-                <label for="prop-bg-color">Background:</label>
+                <label for="prop-bg-color">Legend Label:</label>
                 <input type="color" id="prop-bg-color">
-                <label for="prop-text-color">Text:</label>
-                <input type="color" id="prop-text-color">
               </div>
               <div class="form-group">
                 <div class="text-style-controls">
@@ -145,6 +153,11 @@
                   <button type="button" id="prop-bold" class="style-btn" aria-label="Bold" title="Bold"><b>B</b></button>
                   <button type="button" id="prop-italic" class="style-btn" aria-label="Italic" title="Italic"><i>I</i></button>
                   <button type="button" id="prop-underline" class="style-btn" aria-label="Underline" title="Underline"><u>U</u></button>
+                  <button type="button" id="prop-text-color-btn" class="style-btn text-color-btn" aria-label="Text color" title="Text color">
+                    <span class="text-color-icon">A</span>
+                    <span class="text-color-bar" id="text-color-bar"></span>
+                    <input type="color" id="prop-text-color" class="hidden-color-input" tabindex="-1">
+                  </button>
                 </div>
               </div>
               <div class="form-group">

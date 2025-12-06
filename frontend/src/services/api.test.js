@@ -55,7 +55,8 @@ describe('API Service', () => {
       expect(mockFetch).toHaveBeenCalledWith('/api/bibmaps/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: 'New Map' })
+        body: JSON.stringify({ title: 'New Map' }),
+        credentials: 'include'
       });
       expect(result).toEqual(newBibmap);
     });
@@ -91,7 +92,8 @@ describe('API Service', () => {
         body: JSON.stringify({
           bibtex_content: '@article{...}',
           taxonomy_ids: [1, 2]
-        })
+        }),
+        credentials: 'include'
       });
       expect(result.imported).toBe(2);
     });
