@@ -1,4 +1,4 @@
-# BibMap
+# BibMaps
 
 Visual Bibliography Mapping for Researchers
 
