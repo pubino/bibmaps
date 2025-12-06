@@ -88,6 +88,9 @@
             <button id="copy-link" class="tool-btn" aria-label="Copy shareable link" title="Copy Link" disabled>
               <span aria-hidden="true">&#128279;</span>
             </button>
+            <button id="close-bibmap" class="tool-btn tool-btn-danger" aria-label="Close this BibMap" title="Close BibMap">
+              <span aria-hidden="true">&times;</span>
+            </button>
           </div>
         </div>
 
@@ -250,10 +253,15 @@
       <!-- References Section -->
       <section id="references-section" class="section" aria-labelledby="references-heading" hidden>
         <div class="section-header">
-          <h2 id="references-heading">Academic References</h2>
-          <button id="import-bibtex" class="btn-primary">
-            <span aria-hidden="true">&#8593;</span> Import BibTeX
-          </button>
+          <h2 id="references-heading">All Academic References</h2>
+          <div class="header-actions">
+            <button id="import-bibtex" class="btn-primary">
+              <span aria-hidden="true">&#8593;</span> Import BibTeX
+            </button>
+            <button id="close-active-bibmap-refs" class="btn-secondary btn-danger-text close-active-bibmap-btn" aria-label="Close active BibMap" disabled>
+              &times; Close BibMap
+            </button>
+          </div>
         </div>
         <div class="filter-bar">
           <div class="filter-group">
@@ -305,10 +313,15 @@
       <!-- Media Section -->
       <section id="media-section" class="section" aria-labelledby="media-heading" hidden>
         <div class="section-header">
-          <h2 id="media-heading">Media Links</h2>
-          <button id="add-media" class="btn-primary">
-            <span aria-hidden="true">+</span> Add Media
-          </button>
+          <h2 id="media-heading">All Media Links</h2>
+          <div class="header-actions">
+            <button id="add-media" class="btn-primary">
+              <span aria-hidden="true">+</span> Add Media
+            </button>
+            <button id="close-active-bibmap-media" class="btn-secondary btn-danger-text close-active-bibmap-btn" aria-label="Close active BibMap" disabled>
+              &times; Close BibMap
+            </button>
+          </div>
         </div>
         <div class="filter-bar">
           <div class="filter-group">
@@ -355,10 +368,15 @@
       <!-- Tags Section -->
       <section id="taxonomies-section" class="section" aria-labelledby="taxonomies-heading" hidden>
         <div class="section-header">
-          <h2 id="taxonomies-heading">Tags</h2>
-          <button id="create-taxonomy" class="btn-primary">
-            <span aria-hidden="true">+</span> New Tag
-          </button>
+          <h2 id="taxonomies-heading">All Tags</h2>
+          <div class="header-actions">
+            <button id="create-taxonomy" class="btn-primary">
+              <span aria-hidden="true">+</span> New Tag
+            </button>
+            <button id="close-active-bibmap-tags" class="btn-secondary btn-danger-text close-active-bibmap-btn" aria-label="Close active BibMap" disabled>
+              &times; Close BibMap
+            </button>
+          </div>
         </div>
         <div class="filter-bar">
           <div class="filter-group">

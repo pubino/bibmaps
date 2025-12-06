@@ -13,6 +13,7 @@ import {
 let currentSection = 'bibmaps';
 let bibmapCanvas = null;
 let currentBibmap = null;
+let activeBibmap = null; // The BibMap that remains "active" even when navigating to other pages
 let taxonomies = [];
 let editingTaxonomyId = null;
 let editingBibmapId = null;
@@ -108,6 +109,58 @@ function showSection(sectionId) {
   });
 
   currentSection = sectionId;
+
+  // Update page titles when section changes
+  updatePageTitles();
+}
+
+// Set the active BibMap and update UI
+function setActiveBibmap(bibmap) {
+  activeBibmap = bibmap;
+  updatePageTitles();
+  updateCloseActiveBibmapButtons();
+}
+
+// Close the active BibMap and update UI
+function closeActiveBibmap() {
+  activeBibmap = null;
+  currentBibmap = null;
+  updatePageTitles();
+  updateCloseActiveBibmapButtons();
+  announce('BibMap closed');
+}
+
+// Update page titles based on active BibMap
+function updatePageTitles() {
+  const referencesHeading = document.getElementById('references-heading');
+  const mediaHeading = document.getElementById('media-heading');
+  const taxonomiesHeading = document.getElementById('taxonomies-heading');
+
+  if (activeBibmap) {
+    referencesHeading.textContent = `Academic References for ${activeBibmap.title}`;
+    mediaHeading.textContent = `Media Links for ${activeBibmap.title}`;
+    taxonomiesHeading.textContent = `Tags for ${activeBibmap.title}`;
+  } else {
+    referencesHeading.textContent = 'All Academic References';
+    mediaHeading.textContent = 'All Media Links';
+    taxonomiesHeading.textContent = 'All Tags';
+  }
+}
+
+// Update "Close Active BibMap" buttons - show name and gray out when no BibMap is active
+function updateCloseActiveBibmapButtons() {
+  const closeButtons = document.querySelectorAll('.close-active-bibmap-btn');
+  closeButtons.forEach(btn => {
+    // Always show the button, but disable when no active BibMap
+    btn.hidden = false;
+    if (activeBibmap) {
+      btn.disabled = false;
+      btn.innerHTML = `&times; Close ${activeBibmap.title}`;
+    } else {
+      btn.disabled = true;
+      btn.innerHTML = '&times; Close BibMap';
+    }
+  });
 }
 
 function openModal(modalId) {
@@ -1197,6 +1250,7 @@ async function openBibMapEditor(bibmapId) {
 
   try {
     currentBibmap = await bibmapCanvas.load(bibmapId);
+    setActiveBibmap(currentBibmap); // Set as active BibMap
     document.getElementById('editor-heading').textContent = currentBibmap.title;
 
     // Update publish toggle state
@@ -1390,6 +1444,32 @@ function loadLegendState() {
 function populateLegendCategorySelect(selectId, currentValue = null) {
   const select = document.getElementById(selectId);
   if (!select) return;
+
+  // Find the help text associated with this select
+  const helpText = select.parentElement?.querySelector('.help-text');
+
+  // Default help texts for each select
+  const defaultHelpTexts = {
+    'import-legend-category': 'Assign all imported references to this legend category',
+    'ref-legend-category': 'Assign to a legend category to link with nodes of the same color',
+    'media-legend-category': 'Assign to a legend category to link with nodes of the same color'
+  };
+
+  // If no BibMap is open, disable the select and show message
+  if (!activeBibmap) {
+    select.innerHTML = '<option value="">None</option>';
+    select.disabled = true;
+    if (helpText) {
+      helpText.textContent = 'Open a BibMap to assign legend categories';
+    }
+    return;
+  }
+
+  // Enable select and restore appropriate help text
+  select.disabled = false;
+  if (helpText && defaultHelpTexts[selectId]) {
+    helpText.textContent = defaultHelpTexts[selectId];
+  }
 
   // Clear existing options except the first "None" option
   select.innerHTML = '<option value="">None</option>';
@@ -2392,6 +2472,30 @@ function setupEventListeners() {
     hidePropertiesPanel();
     showSection('bibmaps');
     loadBibMaps();
+  });
+
+  // Close BibMap button in editor (closes the active BibMap and goes back to list)
+  document.getElementById('close-bibmap').addEventListener('click', () => {
+    hidePropertiesPanel();
+    closeActiveBibmap();
+    showSection('bibmaps');
+    loadBibMaps();
+  });
+
+  // Close Active BibMap buttons on References/Media/Tags pages
+  document.getElementById('close-active-bibmap-refs').addEventListener('click', () => {
+    closeActiveBibmap();
+    loadReferences();
+  });
+
+  document.getElementById('close-active-bibmap-media').addEventListener('click', () => {
+    closeActiveBibmap();
+    loadMedia();
+  });
+
+  document.getElementById('close-active-bibmap-tags').addEventListener('click', () => {
+    closeActiveBibmap();
+    loadTaxonomies();
   });
 
   // Back to editor from node references page

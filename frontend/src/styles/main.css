@@ -229,6 +229,20 @@ main {
   background: #DC2626;
 }
 
+.btn-danger-text {
+  color: var(--danger);
+}
+
+.btn-danger-text:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.btn-danger-text:disabled {
+  color: var(--text-muted);
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .panel-danger-zone {
   margin-top: 1rem;
   padding-top: 1rem;
@@ -1062,6 +1076,12 @@ main {
   background-repeat: no-repeat;
   background-position: right 0.5rem center;
   background-size: 1.5em;
+}
+
+.legend-category-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background-color: var(--background);
 }
 
 .legend-category-select option {
