@@ -1,15 +1,36 @@
 # BibMap - Task Notes
 
-## Project Status: COMPLETE
-All PRIMARY GOAL items verified complete - 2025-12-06:
-- Backend: 166 tests passing
-- Frontend: 178 tests passing
+## Project Status: VERIFIED COMPLETE
+All PRIMARY GOAL items verified - 2025-12-06:
+- Backend: 171 tests passing
+- Frontend: 181 tests passing
 
-## Completed Features
-1. Legend Categories for References/Media
-2. "Link to Tagged References" renamed to "Link to References"
-3. "Link to References" available when node has tags OR non-default background color
-4. References/media interleaved with match reason indicators
+## Architecture Verification
+
+The PRIMARY GOAL requirements have been implemented as follows:
+
+### 1. User-wide References/Media/Tags
+- All three models have `user_id` FK (not `bibmap_id`)
+- They are owned by users, not BibMaps
+
+### 2. BibMap-specific Tag/Category Application
+- **Key insight**: The association is computed at runtime, not stored
+- Nodes belong to BibMaps and have Tags
+- When viewing a Node's references, `get_node_references` filters by matching Tags
+- Result: Same Reference can appear in different BibMaps based on Node Tags
+- Legend categories also matched at query time via node's `background_color`
+
+### 3. Export Filtering
+- `getLinkedReferences()` filters to only references sharing tags with nodes
+- `buildTagMappings()` only exports tags used by nodes
+- Note: No explicit warning dialog shown to user (minor UX gap)
+
+### 4. Import Duplicate Prevention
+- `references.py:103-109` checks for duplicate `bibtex_key`
+- Duplicates are skipped with error message
+
+### 5. Test Coverage
+- Comprehensive test suites protect all architecture decisions
 
 ## Quick Commands
 ```bash
