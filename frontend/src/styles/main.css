@@ -1662,15 +1662,29 @@ main {
   cursor: pointer;
 }
 
-.taxonomy-card:hover .edit-indicator {
-  opacity: 1;
+.taxonomy-card-compact {
+  padding: 0.75rem 1rem;
 }
 
-.edit-indicator {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  opacity: 0;
+.taxonomy-card-compact h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.taxonomy-card-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.taxonomy-card-row .btn-icon {
+  opacity: 0.5;
   transition: opacity 0.2s;
+}
+
+.taxonomy-card-compact:hover .btn-icon {
+  opacity: 1;
 }
 
 /* Reference card clickable */

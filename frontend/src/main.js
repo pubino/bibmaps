@@ -774,13 +774,12 @@ function renderTaxonomiesList() {
   }
 
   container.innerHTML = tagsToRender.map(tax => `
-    <div class="card taxonomy-card" role="listitem" data-id="${tax.id}">
-      <h3><span class="tag-color-dot" style="background-color: ${tax.color}"></span>${escapeHtml(tax.name)}</h3>
-      <p>${escapeHtml(tax.description || 'No description')}</p>
-      <div class="card-footer">
-        <span>Created ${formatDate(tax.created_at)}</span>
-        <span class="edit-indicator">Click to edit</span>
-        <button class="btn-secondary delete-taxonomy" data-id="${tax.id}" data-name="${escapeHtml(tax.name)}" aria-label="Delete ${tax.name}">Delete</button>
+    <div class="card taxonomy-card taxonomy-card-compact" role="listitem" data-id="${tax.id}">
+      <div class="taxonomy-card-row">
+        <h3><span class="tag-color-dot" style="background-color: ${tax.color}"></span>${escapeHtml(tax.name)}</h3>
+        <button class="btn-icon btn-danger-icon delete-taxonomy" data-id="${tax.id}" data-name="${escapeHtml(tax.name)}" aria-label="Delete ${tax.name}" title="Delete">
+          <span aria-hidden="true">&#128465;</span>
+        </button>
       </div>
     </div>
   `).join('');
@@ -788,7 +787,7 @@ function renderTaxonomiesList() {
   // Click to edit handlers
   container.querySelectorAll('.taxonomy-card').forEach(card => {
     card.addEventListener('click', (e) => {
-      if (!e.target.classList.contains('delete-taxonomy')) {
+      if (!e.target.closest('.delete-taxonomy')) {
         openEditTaxonomy(parseInt(card.dataset.id));
       }
     });
