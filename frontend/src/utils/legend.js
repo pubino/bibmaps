@@ -96,20 +96,20 @@ export function isValidHexColor(color) {
 }
 
 /**
- * Parse legend metadata from bibmap
- * @param {string|null} metadataString - JSON string of bibmap metadata
+ * Parse legend settings from bibmap settings_json
+ * @param {string|null} settingsString - JSON string of bibmap settings_json
  * @returns {Object} - Parsed legend settings { showLegend, legendLabels }
  */
-export function parseLegendMetadata(metadataString) {
-  if (!metadataString) {
+export function parseLegendSettings(settingsString) {
+  if (!settingsString) {
     return { showLegend: false, legendLabels: {} };
   }
 
   try {
-    const metadata = JSON.parse(metadataString);
+    const settings = JSON.parse(settingsString);
     return {
-      showLegend: metadata.showLegend || false,
-      legendLabels: metadata.legendLabels || {}
+      showLegend: settings.showLegend || false,
+      legendLabels: settings.legendLabels || {}
     };
   } catch (e) {
     return { showLegend: false, legendLabels: {} };

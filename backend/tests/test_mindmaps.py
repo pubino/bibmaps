@@ -132,3 +132,83 @@ def test_update_mindmap_with_is_published(client):
     response = client.put(f"/api/bibmaps/{mm_id}", json={"is_published": True})
     assert response.status_code == 200
     assert response.json()["is_published"] is True
+
+
+def test_update_mindmap_with_settings_json(client):
+    """Test updating a mind map's settings_json field for legend persistence."""
+    create_resp = client.post("/api/bibmaps/", json={"title": "Test Map"})
+    mm_id = create_resp.json()["id"]
+
+    # Initially settings_json should be None
+    assert create_resp.json().get("settings_json") is None
+
+    # Update with legend settings
+    settings = '{"legendLabels": {"#FF0000": "Important", "#00FF00": "Secondary"}, "showLegend": true}'
+    response = client.put(f"/api/bibmaps/{mm_id}", json={"settings_json": settings})
+    assert response.status_code == 200
+    assert response.json()["settings_json"] == settings
+
+
+def test_settings_json_persists_across_requests(client):
+    """Test that settings_json persists when fetching the bibmap again."""
+    create_resp = client.post("/api/bibmaps/", json={"title": "Legend Test"})
+    mm_id = create_resp.json()["id"]
+
+    # Set settings_json
+    settings = '{"legendLabels": {"#3B82F6": "Primary", "#10B981": "Active"}, "showLegend": true}'
+    client.put(f"/api/bibmaps/{mm_id}", json={"settings_json": settings})
+
+    # Fetch again and verify settings persisted
+    response = client.get(f"/api/bibmaps/{mm_id}")
+    assert response.status_code == 200
+    assert response.json()["settings_json"] == settings
+
+
+def test_settings_json_in_list_response(client):
+    """Test that settings_json is included in the list response."""
+    # Create a bibmap with settings
+    create_resp = client.post("/api/bibmaps/", json={"title": "Listed Map"})
+    mm_id = create_resp.json()["id"]
+
+    settings = '{"legendLabels": {"#FF0000": "Test"}}'
+    client.put(f"/api/bibmaps/{mm_id}", json={"settings_json": settings})
+
+    # List should include settings_json
+    response = client.get("/api/bibmaps/")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["settings_json"] == settings
+
+
+def test_settings_json_in_public_endpoint(client):
+    """Test that settings_json is available on the public endpoint for published maps."""
+    create_resp = client.post("/api/bibmaps/", json={"title": "Public Legend Map"})
+    mm_id = create_resp.json()["id"]
+
+    # Set settings and publish
+    settings = '{"legendLabels": {"#FF0000": "Important"}, "showLegend": true}'
+    client.put(f"/api/bibmaps/{mm_id}", json={"settings_json": settings})
+    client.put(f"/api/bibmaps/{mm_id}/publish")
+
+    # Public endpoint should include settings_json
+    response = client.get(f"/api/bibmaps/public/{mm_id}")
+    assert response.status_code == 200
+    assert response.json()["settings_json"] == settings
+
+
+def test_update_settings_json_partial(client):
+    """Test that updating settings_json doesn't affect other fields."""
+    create_resp = client.post("/api/bibmaps/", json={
+        "title": "Original Title",
+        "description": "Original Description"
+    })
+    mm_id = create_resp.json()["id"]
+
+    # Update only settings_json
+    settings = '{"legendLabels": {}}'
+    response = client.put(f"/api/bibmaps/{mm_id}", json={"settings_json": settings})
+    assert response.status_code == 200
+    assert response.json()["title"] == "Original Title"
+    assert response.json()["description"] == "Original Description"
+    assert response.json()["settings_json"] == settings

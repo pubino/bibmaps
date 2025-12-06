@@ -133,9 +133,17 @@
                   <span>Wrap text to node size</span>
                 </label>
               </div>
-              <div class="form-group-inline">
-                <label for="prop-bg-color">Legend Label</label>
-                <input type="color" id="prop-bg-color">
+              <div class="form-group">
+                <label>Category</label>
+                <div id="category-selector" class="category-selector">
+                  <div id="existing-categories" class="existing-categories"></div>
+                  <div class="new-category-row">
+                    <label class="category-option new-category-option" title="Create new category">
+                      <input type="color" id="prop-bg-color" class="category-color-picker">
+                      <span class="category-label">+ New</span>
+                    </label>
+                  </div>
+                </div>
               </div>
               <div class="form-group">
                 <label for="prop-description">Description</label>
@@ -186,9 +194,9 @@
               <div class="form-group" id="link-refs-group">
                 <label class="toggle-label-inline" for="prop-link-refs">
                   <input type="checkbox" id="prop-link-refs" disabled>
-                  <span>Link to Tagged References</span>
+                  <span>Link to References</span>
                 </label>
-                <p class="help-text" id="link-refs-help">Add tags above to enable linking to references</p>
+                <p class="help-text" id="link-refs-help">Add tags or set a legend category to enable linking</p>
               </div>
             </div>
             <div id="node-references" hidden>
@@ -597,6 +605,13 @@
               <div class="tag-suggestions" id="import-tag-suggestions" hidden></div>
             </div>
           </div>
+          <div class="form-group">
+            <label for="import-legend-category">Legend Category:</label>
+            <select id="import-legend-category" class="legend-category-select">
+              <option value="">None</option>
+            </select>
+            <p class="help-text">Assign all imported references to this legend category</p>
+          </div>
           <div class="form-actions">
             <button type="submit" class="btn-primary">Import</button>
             <button type="button" class="btn-secondary modal-close">Cancel</button>
@@ -661,6 +676,13 @@
             <div class="tag-suggestions" id="ref-tag-suggestions" hidden></div>
           </div>
         </div>
+        <div class="form-group">
+          <label for="ref-legend-category">Legend Category:</label>
+          <select id="ref-legend-category" class="legend-category-select">
+            <option value="">None</option>
+          </select>
+          <p class="help-text">Assign to a legend category to link with nodes of the same color</p>
+        </div>
         <div class="form-group" id="edit-bibtex-section">
           <details>
             <summary>Edit BibTeX</summary>
@@ -704,6 +726,13 @@
               <input type="text" id="media-tag-search" class="tag-search-input" placeholder="Type to add tags..." autocomplete="off">
               <div class="tag-suggestions" id="media-tag-suggestions" hidden></div>
             </div>
+          </div>
+          <div class="form-group">
+            <label for="media-legend-category">Legend Category:</label>
+            <select id="media-legend-category" class="legend-category-select">
+              <option value="">None</option>
+            </select>
+            <p class="help-text">Assign to a legend category to link with nodes of the same color</p>
           </div>
           <div class="form-actions">
             <button type="submit" class="btn-primary" id="media-submit-btn">Add</button>

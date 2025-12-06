@@ -924,6 +924,8 @@ function openMediaModal(mediaId = null) {
 
     // Set up tags
     mediaSelectedTags = media.taxonomies ? media.taxonomies.map(t => ({ id: t.id, name: t.name, color: t.color })) : [];
+    // Set up legend category
+    populateLegendCategorySelect('media-legend-category', media.legend_category);
   } else {
     // Create mode
     editingMediaId = null;
@@ -932,6 +934,8 @@ function openMediaModal(mediaId = null) {
     document.getElementById('media-submit-btn').textContent = 'Add';
     document.getElementById('delete-media-btn').hidden = true;
     mediaSelectedTags = [];
+    // Reset legend category
+    populateLegendCategorySelect('media-legend-category');
   }
 
   renderSelectedTags('media');
@@ -1042,11 +1046,21 @@ async function importBibMapFile(file) {
 
     const bibmapData = JSON.parse(await bibmapJsonFile.async('text'));
 
+    // Extract bibmap metadata (handle both old flat format and new nested format)
+    const bibmapMeta = bibmapData.bibmap || bibmapData;
+
     // Create the BibMap
-    const newBibmap = await api.bibmaps.create({
-      title: bibmapData.title + ' (imported)',
-      description: bibmapData.description || ''
+    let newBibmap = await api.bibmaps.create({
+      title: (bibmapMeta.title || 'Untitled') + ' (imported)',
+      description: bibmapMeta.description || ''
     });
+
+    // Update with settings_json if present (for legend categories)
+    if (bibmapMeta.settings_json) {
+      newBibmap = await api.bibmaps.update(newBibmap.id, {
+        settings_json: bibmapMeta.settings_json
+      });
+    }
 
     // Import references if references.bib exists
     const refsBibFile = zip.file('references.bib');
@@ -1191,7 +1205,7 @@ async function openBibMapEditor(bibmapId) {
     publishToggle.checked = currentBibmap.is_published || false;
     copyLinkBtn.disabled = !currentBibmap.is_published;
 
-    // Load legend state from metadata and update UI
+    // Load legend state from settings and update UI
     loadLegendState();
     document.getElementById('show-legend-toggle').checked = showLegend;
     updateLegend();
@@ -1334,30 +1348,30 @@ function updateLegend() {
 
 function saveLegendLabels() {
   if (currentBibmap && currentBibmap.id) {
-    // Store legend labels in bibmap metadata
-    const metadata = currentBibmap.metadata ? JSON.parse(currentBibmap.metadata) : {};
-    metadata.legendLabels = legendLabels;
-    api.bibmaps.update(currentBibmap.id, { metadata: JSON.stringify(metadata) })
+    // Store legend labels in bibmap settings_json
+    const settings = currentBibmap.settings_json ? JSON.parse(currentBibmap.settings_json) : {};
+    settings.legendLabels = legendLabels;
+    api.bibmaps.update(currentBibmap.id, { settings_json: JSON.stringify(settings) })
       .catch(err => console.error('Failed to save legend labels:', err));
   }
 }
 
 function saveShowLegendState() {
   if (currentBibmap && currentBibmap.id) {
-    const metadata = currentBibmap.metadata ? JSON.parse(currentBibmap.metadata) : {};
-    metadata.showLegend = showLegend;
-    currentBibmap.metadata = JSON.stringify(metadata);
-    api.bibmaps.update(currentBibmap.id, { metadata: currentBibmap.metadata })
+    const settings = currentBibmap.settings_json ? JSON.parse(currentBibmap.settings_json) : {};
+    settings.showLegend = showLegend;
+    currentBibmap.settings_json = JSON.stringify(settings);
+    api.bibmaps.update(currentBibmap.id, { settings_json: currentBibmap.settings_json })
       .catch(err => console.error('Failed to save legend visibility:', err));
   }
 }
 
 function loadLegendState() {
-  if (currentBibmap && currentBibmap.metadata) {
+  if (currentBibmap && currentBibmap.settings_json) {
     try {
-      const metadata = JSON.parse(currentBibmap.metadata);
-      legendLabels = metadata.legendLabels || {};
-      showLegend = metadata.showLegend || false;
+      const settings = JSON.parse(currentBibmap.settings_json);
+      legendLabels = settings.legendLabels || {};
+      showLegend = settings.showLegend || false;
     } catch (e) {
       legendLabels = {};
       showLegend = false;
@@ -1365,6 +1379,104 @@ function loadLegendState() {
   } else {
     legendLabels = {};
     showLegend = false;
+  }
+}
+
+/**
+ * Populate a legend category select dropdown with options from legendLabels
+ * @param {string} selectId - The ID of the select element
+ * @param {string|null} currentValue - The currently selected value (a color)
+ */
+function populateLegendCategorySelect(selectId, currentValue = null) {
+  const select = document.getElementById(selectId);
+  if (!select) return;
+
+  // Clear existing options except the first "None" option
+  select.innerHTML = '<option value="">None</option>';
+
+  // Add options for each legend category
+  Object.entries(legendLabels).forEach(([color, label]) => {
+    const option = document.createElement('option');
+    option.value = color;
+    option.textContent = label;
+    option.style.backgroundColor = color;
+    select.appendChild(option);
+  });
+
+  // Set the current value if provided
+  if (currentValue) {
+    select.value = currentValue.toUpperCase();
+  }
+}
+
+/**
+ * Populate existing categories in the Node Properties panel
+ * @param {string|null} currentColor - The currently selected background color
+ */
+function populateExistingCategories(currentColor) {
+  const container = document.getElementById('existing-categories');
+  if (!container) return;
+
+  container.innerHTML = '';
+  const normalizedCurrent = currentColor ? currentColor.toUpperCase() : null;
+
+  // Get categories from legendLabels (which contains all used colors)
+  Object.entries(legendLabels).forEach(([color, label]) => {
+    const option = document.createElement('button');
+    option.type = 'button';
+    option.className = 'category-option';
+    if (normalizedCurrent === color.toUpperCase()) {
+      option.classList.add('selected');
+    }
+    option.dataset.color = color;
+
+    option.innerHTML = `
+      <span class="category-color-swatch" style="background-color: ${color}"></span>
+      <span class="category-label">${label}</span>
+    `;
+
+    option.addEventListener('click', () => selectCategory(color));
+    container.appendChild(option);
+  });
+}
+
+/**
+ * Handle category selection from the existing categories list
+ * @param {string} color - The color of the selected category
+ */
+function selectCategory(color) {
+  // Update the color picker value
+  document.getElementById('prop-bg-color').value = color;
+
+  // Update visual selection state
+  document.querySelectorAll('#existing-categories .category-option').forEach(opt => {
+    opt.classList.toggle('selected', opt.dataset.color.toUpperCase() === color.toUpperCase());
+  });
+
+  // Save the background color to the node
+  saveNodeProperty('background_color', color);
+
+  // Update legend
+  updateLegend();
+
+  // Update link to references checkbox
+  updateLinkRefsCheckbox(document.getElementById('prop-link-refs').checked);
+}
+
+/**
+ * Save legend category for a reference
+ * @param {string} legendCategory - The legend category (color) or empty string for none
+ */
+async function saveReferenceLegendCategory(legendCategory) {
+  if (!currentReferenceId) return;
+
+  try {
+    await api.references.update(currentReferenceId, {
+      legend_category: legendCategory || null
+    });
+    loadReferences(); // Refresh the list
+  } catch (err) {
+    announce(`Error saving legend category: ${err.message}`);
   }
 }
 
@@ -1446,6 +1558,8 @@ function showPropertiesPanel(node) {
   document.getElementById('prop-label').value = node.label || '';
   document.getElementById('prop-description').value = node.description || '';
   document.getElementById('prop-bg-color').value = node.background_color || '#3B82F6';
+  // Populate existing categories for selection
+  populateExistingCategories(node.background_color);
   const textColor = node.text_color || '#FFFFFF';
   document.getElementById('prop-text-color').value = textColor;
   document.getElementById('text-color-bar').style.backgroundColor = textColor;
@@ -1529,10 +1643,14 @@ function updateLinkRefsCheckbox(currentValue = true) {
   const checkbox = document.getElementById('prop-link-refs');
   const helpText = document.getElementById('link-refs-help');
   const hasTags = nodeSelectedTags.length > 0;
+  // Check if node has a legend category (non-default background color)
+  const bgColor = document.getElementById('prop-bg-color').value;
+  const hasLegendCategory = bgColor && bgColor.toUpperCase() !== '#3B82F6';
+  const canLink = hasTags || hasLegendCategory;
 
-  checkbox.disabled = !hasTags;
+  checkbox.disabled = !canLink;
 
-  if (hasTags) {
+  if (canLink) {
     // Enable and set to the current value (or auto-check if was disabled)
     checkbox.checked = currentValue;
     helpText.hidden = true;
@@ -1597,46 +1715,53 @@ async function loadFullNodeReferences(nodeId) {
 
     let html = '';
 
-    // Add references section if any
-    if (refs.length > 0) {
-      html += '<h3 class="section-subheading">References (' + refs.length + ')</h3>';
-      html += refs.map(ref => `
-        <article class="reference-card" role="listitem" data-id="${ref.id}" data-type="reference">
-          <h3>${escapeHtml(ref.title || ref.bibtex_key)}</h3>
-          <p class="authors">${escapeHtml(ref.author || 'Unknown author')}</p>
-          <p class="meta">
-            ${ref.year ? `(${ref.year})` : ''}
-            ${ref.journal ? `<em>${escapeHtml(ref.journal)}</em>` : ''}
-            ${ref.booktitle ? `In <em>${escapeHtml(ref.booktitle)}</em>` : ''}
-          </p>
-          <div class="tags">
-            ${ref.taxonomies?.map(t => `
-              <span class="tag" style="background: ${t.color}; color: white;">${escapeHtml(t.name)}</span>
-            `).join('') || ''}
-          </div>
-          ${ref.doi ? `<p class="meta"><a href="https://doi.org/${ref.doi}" target="_blank" rel="noopener noreferrer">DOI: ${ref.doi}</a></p>` : ''}
-          ${ref.abstract ? `<p class="abstract">${escapeHtml(ref.abstract.substring(0, 300))}${ref.abstract.length > 300 ? '...' : ''}</p>` : ''}
-        </article>
-      `).join('');
-    }
+    // Combine and interleave references and media
+    const allItems = [
+      ...refs.map(ref => ({ ...ref, itemType: 'reference' })),
+      ...media.map(m => ({ ...m, itemType: 'media' }))
+    ];
 
-    // Add media section if any
-    if (media.length > 0) {
-      html += '<h3 class="section-subheading">Media (' + media.length + ')</h3>';
-      html += media.map(m => `
-        <article class="reference-card media-card" role="listitem" data-id="${m.id}" data-type="media">
-          <h3>${escapeHtml(m.title)}</h3>
-          <p class="meta"><a href="${escapeHtml(m.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(m.url)}</a></p>
-          ${m.description ? `<p class="description">${escapeHtml(m.description)}</p>` : ''}
-          <div class="tags">
-            ${m.taxonomies?.map(t => `
-              <span class="tag" style="background: ${t.color}; color: white;">${escapeHtml(t.name)}</span>
-            `).join('') || ''}
-          </div>
-          <p class="meta">Added ${formatDate(m.created_at)}</p>
-        </article>
-      `).join('');
-    }
+    // Sort by created_at descending (most recent first)
+    allItems.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+    html += allItems.map(item => {
+      if (item.itemType === 'reference') {
+        return `
+          <article class="reference-card" role="listitem" data-id="${item.id}" data-type="reference">
+            <h3>${escapeHtml(item.title || item.bibtex_key)}</h3>
+            <p class="authors">${escapeHtml(item.author || 'Unknown author')}</p>
+            <p class="meta">
+              ${item.year ? `(${item.year})` : ''}
+              ${item.journal ? `<em>${escapeHtml(item.journal)}</em>` : ''}
+              ${item.booktitle ? `In <em>${escapeHtml(item.booktitle)}</em>` : ''}
+            </p>
+            <div class="tags">
+              ${item.taxonomies?.map(t => `
+                <span class="tag" style="background: ${t.color}; color: white;">${escapeHtml(t.name)}</span>
+              `).join('') || ''}
+            </div>
+            ${item.doi ? `<p class="meta"><a href="https://doi.org/${item.doi}" target="_blank" rel="noopener noreferrer">DOI: ${item.doi}</a></p>` : ''}
+            ${item.abstract ? `<p class="abstract">${escapeHtml(item.abstract.substring(0, 300))}${item.abstract.length > 300 ? '...' : ''}</p>` : ''}
+            ${renderMatchIndicators(item.match_reasons)}
+          </article>
+        `;
+      } else {
+        return `
+          <article class="reference-card media-card" role="listitem" data-id="${item.id}" data-type="media">
+            <h3>${escapeHtml(item.title)}</h3>
+            <p class="meta"><a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.url)}</a></p>
+            ${item.description ? `<p class="description">${escapeHtml(item.description)}</p>` : ''}
+            <div class="tags">
+              ${item.taxonomies?.map(t => `
+                <span class="tag" style="background: ${t.color}; color: white;">${escapeHtml(t.name)}</span>
+              `).join('') || ''}
+            </div>
+            <p class="meta">Added ${formatDate(item.created_at)}</p>
+            ${renderMatchIndicators(item.match_reasons)}
+          </article>
+        `;
+      }
+    }).join('');
 
     content.innerHTML = html;
 
@@ -1827,6 +1952,9 @@ async function openReferenceDetail(refId) {
     refSelectedTags = ref.taxonomies ? ref.taxonomies.map(t => ({ id: t.id, name: t.name, color: t.color })) : [];
     renderSelectedTags('ref');
 
+    // Set up legend category dropdown
+    populateLegendCategorySelect('ref-legend-category', ref.legend_category);
+
     // Set up BibTeX editor
     document.getElementById('ref-edit-bibtex').value = ref.raw_bibtex;
 
@@ -1843,6 +1971,45 @@ function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
+}
+
+function renderMatchIndicators(matchReasons) {
+  if (!matchReasons || matchReasons.length === 0) return '';
+
+  const indicators = matchReasons.map(reason => {
+    if (reason.type === 'taxonomy') {
+      return `
+        <span class="match-indicator match-indicator--taxonomy">
+          <span class="match-label">Tag:</span>
+          <span class="color-dot" style="background: ${reason.taxonomy_color || '#6B7280'}"></span>
+          ${escapeHtml(reason.taxonomy_name)}
+        </span>
+      `;
+    } else if (reason.type === 'legend_category') {
+      const legendLabel = getLegendLabelByColor(reason.legend_category);
+      return `
+        <span class="match-indicator match-indicator--legend">
+          <span class="match-label">Category:</span>
+          <span class="color-dot" style="background: ${reason.legend_category}"></span>
+          ${escapeHtml(legendLabel || 'Legend')}
+        </span>
+      `;
+    }
+    return '';
+  }).join('');
+
+  return `<div class="match-indicators">${indicators}</div>`;
+}
+
+function getLegendLabelByColor(color) {
+  if (!color || !legendLabels) return null;
+  const normalizedColor = color.toUpperCase();
+  for (const [labelColor, labelText] of Object.entries(legendLabels)) {
+    if (labelColor.toUpperCase() === normalizedColor) {
+      return labelText;
+    }
+  }
+  return null;
 }
 
 // Tag Input Component Functions
@@ -2395,6 +2562,11 @@ function setupEventListeners() {
     saveNodeProperty('background_color', e.target.value);
     // Update legend when node color changes
     updateLegend();
+    // Clear existing category selection and refresh the category list
+    populateExistingCategories(e.target.value);
+    // Update link to references checkbox (enabled if has legend category or tags)
+    const checkbox = document.getElementById('prop-link-refs');
+    updateLinkRefsCheckbox(checkbox.checked);
   });
 
   document.getElementById('prop-text-color').addEventListener('input', (e) => {
@@ -2523,6 +2695,8 @@ function setupEventListeners() {
     document.getElementById('import-result').hidden = true;
     document.getElementById('import-duplicates').hidden = true;
     document.getElementById('import-errors-container').hidden = true;
+    // Populate legend category dropdown
+    populateLegendCategorySelect('import-legend-category');
     openModal('import-bibtex-modal');
   });
 
@@ -2550,9 +2724,10 @@ function setupEventListeners() {
     }
 
     const taxonomyIds = importSelectedTags.map(t => t.id);
+    const legendCategory = document.getElementById('import-legend-category').value || null;
 
     try {
-      const result = await api.references.import(bibtex, taxonomyIds);
+      const result = await api.references.import(bibtex, taxonomyIds, legendCategory);
       document.getElementById('import-result').hidden = false;
 
       // Separate duplicates from other errors
@@ -2728,11 +2903,13 @@ function setupEventListeners() {
   document.getElementById('media-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     try {
+      const legendCategory = document.getElementById('media-legend-category').value || null;
       const data = {
         title: document.getElementById('media-title').value,
         url: document.getElementById('media-url').value,
         description: document.getElementById('media-description').value || null,
-        taxonomy_ids: mediaSelectedTags.map(t => t.id)
+        taxonomy_ids: mediaSelectedTags.map(t => t.id),
+        legend_category: legendCategory
       };
 
       if (editingMediaId) {
@@ -2801,6 +2978,11 @@ function setupEventListeners() {
     } catch (err) {
       announce(`Error: ${err.message}`);
     }
+  });
+
+  // Legend category change for reference
+  document.getElementById('ref-legend-category').addEventListener('change', (e) => {
+    saveReferenceLegendCategory(e.target.value);
   });
 
   // Delete reference
@@ -2910,9 +3092,9 @@ async function initShareView(bibmapId) {
         </svg>
         <div id="sr-node-list" class="sr-only" role="list" aria-label="BibMap nodes"></div>
         <!-- Legend Panel for share view (read-only) -->
-        <div id="legend-panel" class="legend-panel" role="region" aria-label="BibMap legend" hidden>
-          <h4 class="legend-title">Legend</h4>
-          <ul id="legend-items" class="legend-items" role="list" aria-label="Legend categories"></ul>
+        <div id="legend-panel" class="legend-panel" role="region" aria-label="BibMap categories" hidden>
+          <h4 class="legend-title">Categories</h4>
+          <ul id="legend-items" class="legend-items" role="list" aria-label="Category list"></ul>
         </div>
       </div>
       <!-- References panel for share view -->
@@ -2956,7 +3138,10 @@ async function initShareView(bibmapId) {
       onNodeClick: (node) => openShareViewReferences(node, bibmapId)
     });
 
-    // Render legend if enabled in metadata
+    // Fit to screen by default for share view
+    canvas.fitToScreen();
+
+    // Render legend if enabled in settings
     renderShareViewLegend(bibmap);
 
     // Set up back button
@@ -2999,45 +3184,52 @@ async function openShareViewReferences(node, bibmapId) {
       return;
     }
 
-    let html = '';
+    // Combine and interleave references and media
+    const allItems = [
+      ...refs.map(ref => ({ ...ref, itemType: 'reference' })),
+      ...media.map(m => ({ ...m, itemType: 'media' }))
+    ];
 
-    if (refs.length > 0) {
-      html += `<h3 class="section-subheading">References (${refs.length})</h3>`;
-      html += refs.map(ref => `
-        <article class="reference-card" role="listitem">
-          <h3>${escapeHtml(ref.title || ref.bibtex_key)}</h3>
-          <p class="authors">${escapeHtml(ref.author || 'Unknown author')}</p>
-          <p class="meta">
-            ${ref.year ? `(${ref.year})` : ''}
-            ${ref.journal ? `<em>${escapeHtml(ref.journal)}</em>` : ''}
-            ${ref.booktitle ? `In <em>${escapeHtml(ref.booktitle)}</em>` : ''}
-          </p>
-          <div class="tags">
-            ${ref.taxonomies?.map(t => `
-              <span class="tag" style="background: ${t.color}; color: white;">${escapeHtml(t.name)}</span>
-            `).join('') || ''}
-          </div>
-          ${ref.doi ? `<p class="meta"><a href="https://doi.org/${ref.doi}" target="_blank" rel="noopener noreferrer">DOI: ${ref.doi}</a></p>` : ''}
-          ${ref.abstract ? `<p class="abstract">${escapeHtml(ref.abstract.substring(0, 300))}${ref.abstract.length > 300 ? '...' : ''}</p>` : ''}
-        </article>
-      `).join('');
-    }
+    // Sort by created_at descending (most recent first)
+    allItems.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-    if (media.length > 0) {
-      html += `<h3 class="section-subheading">Media (${media.length})</h3>`;
-      html += media.map(m => `
-        <article class="reference-card media-card" role="listitem">
-          <h3>${escapeHtml(m.title)}</h3>
-          <p class="meta"><a href="${escapeHtml(m.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(m.url)}</a></p>
-          ${m.description ? `<p class="description">${escapeHtml(m.description)}</p>` : ''}
-          <div class="tags">
-            ${m.taxonomies?.map(t => `
-              <span class="tag" style="background: ${t.color}; color: white;">${escapeHtml(t.name)}</span>
-            `).join('') || ''}
-          </div>
-        </article>
-      `).join('');
-    }
+    const html = allItems.map(item => {
+      if (item.itemType === 'reference') {
+        return `
+          <article class="reference-card" role="listitem">
+            <h3>${escapeHtml(item.title || item.bibtex_key)}</h3>
+            <p class="authors">${escapeHtml(item.author || 'Unknown author')}</p>
+            <p class="meta">
+              ${item.year ? `(${item.year})` : ''}
+              ${item.journal ? `<em>${escapeHtml(item.journal)}</em>` : ''}
+              ${item.booktitle ? `In <em>${escapeHtml(item.booktitle)}</em>` : ''}
+            </p>
+            <div class="tags">
+              ${item.taxonomies?.map(t => `
+                <span class="tag" style="background: ${t.color}; color: white;">${escapeHtml(t.name)}</span>
+              `).join('') || ''}
+            </div>
+            ${item.doi ? `<p class="meta"><a href="https://doi.org/${item.doi}" target="_blank" rel="noopener noreferrer">DOI: ${item.doi}</a></p>` : ''}
+            ${item.abstract ? `<p class="abstract">${escapeHtml(item.abstract.substring(0, 300))}${item.abstract.length > 300 ? '...' : ''}</p>` : ''}
+            ${renderMatchIndicators(item.match_reasons)}
+          </article>
+        `;
+      } else {
+        return `
+          <article class="reference-card media-card" role="listitem">
+            <h3>${escapeHtml(item.title)}</h3>
+            <p class="meta"><a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.url)}</a></p>
+            ${item.description ? `<p class="description">${escapeHtml(item.description)}</p>` : ''}
+            <div class="tags">
+              ${item.taxonomies?.map(t => `
+                <span class="tag" style="background: ${t.color}; color: white;">${escapeHtml(t.name)}</span>
+              `).join('') || ''}
+            </div>
+            ${renderMatchIndicators(item.match_reasons)}
+          </article>
+        `;
+      }
+    }).join('');
 
     content.innerHTML = html;
   } catch (err) {
@@ -3047,21 +3239,21 @@ async function openShareViewReferences(node, bibmapId) {
 
 // Render legend in share view (read-only)
 function renderShareViewLegend(bibmap) {
-  let metadata = {};
-  if (bibmap.metadata) {
+  let settings = {};
+  if (bibmap.settings_json) {
     try {
-      metadata = JSON.parse(bibmap.metadata);
+      settings = JSON.parse(bibmap.settings_json);
     } catch (e) {
-      return; // Invalid metadata, don't show legend
+      return; // Invalid settings, don't show legend
     }
   }
 
   // Only show legend if it was enabled in the editor
-  if (!metadata.showLegend) {
+  if (!settings.showLegend) {
     return;
   }
 
-  const legendLabelsData = metadata.legendLabels || {};
+  const legendLabelsData = settings.legendLabels || {};
   const nodes = bibmap.nodes || [];
 
   // Collect unique background colors from nodes

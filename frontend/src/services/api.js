@@ -121,7 +121,9 @@ export const api = {
     updatePosition: (id, x, y) => request(`/nodes/${id}/position?x=${x}&y=${y}`, { method: 'PUT' }),
     updateSize: (id, width, height) => request(`/nodes/${id}/size?width=${width}&height=${height}`, { method: 'PUT' }),
     getReferences: (id) => request(`/nodes/${id}/references`),
-    getMedia: (id) => request(`/nodes/${id}/media`)
+    getMedia: (id) => request(`/nodes/${id}/media`),
+    getPublicReferences: (id) => request(`/nodes/public/${id}/references`),
+    getPublicMedia: (id) => request(`/nodes/public/${id}/media`)
   },
 
   // Connections
@@ -157,9 +159,13 @@ export const api = {
       body: JSON.stringify({ bibtex_content: bibtexContent })
     }),
     delete: (id) => request(`/references/${id}`, { method: 'DELETE' }),
-    import: (bibtexContent, taxonomyIds = []) => request('/references/import', {
+    import: (bibtexContent, taxonomyIds = [], legendCategory = null) => request('/references/import', {
       method: 'POST',
-      body: JSON.stringify({ bibtex_content: bibtexContent, taxonomy_ids: taxonomyIds })
+      body: JSON.stringify({
+        bibtex_content: bibtexContent,
+        taxonomy_ids: taxonomyIds,
+        legend_category: legendCategory
+      })
     })
   },
 

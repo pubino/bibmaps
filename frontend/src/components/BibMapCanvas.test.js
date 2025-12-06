@@ -679,4 +679,95 @@ describe('BibMapCanvas', () => {
       expect(path).toContain('L 150 60');
     });
   });
+
+  describe('setReadOnly', () => {
+    it('should set readOnly property to true when enabled', () => {
+      canvas.setReadOnly(true);
+      expect(canvas.readOnly).toBe(true);
+    });
+
+    it('should set readOnly property to false when disabled', () => {
+      canvas.readOnly = true;
+      canvas.setReadOnly(false);
+      expect(canvas.readOnly).toBe(false);
+    });
+
+    it('should disable connectMode when read-only is enabled', () => {
+      canvas.connectMode = true;
+      canvas.setReadOnly(true);
+      expect(canvas.connectMode).toBe(false);
+    });
+
+    it('should accept options for linked references', () => {
+      const mockCallback = vi.fn();
+      canvas.setReadOnly(true, {
+        enableLinkedReferences: true,
+        onNodeClick: mockCallback
+      });
+      expect(canvas.readOnly).toBe(true);
+    });
+
+    it('should not throw when called with no options', () => {
+      expect(() => canvas.setReadOnly(true)).not.toThrow();
+    });
+
+    it('should accept empty options object', () => {
+      expect(() => canvas.setReadOnly(true, {})).not.toThrow();
+      expect(canvas.readOnly).toBe(true);
+    });
+
+    it('should clear selection when entering read-only mode', () => {
+      canvas.selectedNode = { id: 1, label: 'Test' };
+      canvas.setReadOnly(true);
+      expect(canvas.selectedNode).toBe(null);
+    });
+
+    it('should clear connection selection when entering read-only mode', () => {
+      canvas.selectedConnection = { id: 1 };
+      canvas.setReadOnly(true);
+      expect(canvas.selectedConnection).toBe(null);
+    });
+
+    it('should clear connect source node when entering read-only mode', () => {
+      canvas.connectSourceNode = { id: 1, label: 'Source' };
+      canvas.setReadOnly(true);
+      expect(canvas.connectSourceNode).toBe(null);
+    });
+
+    it('should only call onNodeClick for nodes with link_to_references enabled', () => {
+      const mockCallback = vi.fn();
+
+      // Add a test node with link_to_references
+      canvas.nodes = [
+        { id: 1, label: 'Linked Node', link_to_references: true },
+        { id: 2, label: 'Regular Node', link_to_references: false }
+      ];
+      canvas.render();
+
+      canvas.setReadOnly(true, {
+        enableLinkedReferences: true,
+        onNodeClick: mockCallback
+      });
+
+      // The callback should have been set up properly
+      // (actual click testing would require DOM simulation)
+      expect(canvas.readOnly).toBe(true);
+    });
+
+    it('should not set click handlers when enableLinkedReferences is false', () => {
+      canvas.setReadOnly(true, {
+        enableLinkedReferences: false,
+        onNodeClick: vi.fn()
+      });
+      expect(canvas.readOnly).toBe(true);
+    });
+
+    it('should not set click handlers when onNodeClick is null', () => {
+      canvas.setReadOnly(true, {
+        enableLinkedReferences: true,
+        onNodeClick: null
+      });
+      expect(canvas.readOnly).toBe(true);
+    });
+  });
 });

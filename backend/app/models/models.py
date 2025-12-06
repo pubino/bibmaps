@@ -93,6 +93,7 @@ class BibMap(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
+    settings_json = Column(Text, nullable=True)  # JSON string for legend labels and other settings
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # Owner of the bibmap
     is_published = Column(Boolean, default=False)  # Whether the map is publicly accessible
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -225,6 +226,9 @@ class Reference(Base):
     # Additional fields stored as JSON-like text
     extra_fields = Column(Text, nullable=True)
 
+    # Legend category - stores a hex color to link with nodes by background_color
+    legend_category = Column(String(7), nullable=True)
+
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # Owner of the reference
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -250,6 +254,8 @@ class Media(Base):
     title = Column(String(255), nullable=False)
     url = Column(Text, nullable=False)
     description = Column(Text, nullable=True)
+    # Legend category - stores a hex color to link with nodes by background_color
+    legend_category = Column(String(7), nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

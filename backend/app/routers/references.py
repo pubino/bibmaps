@@ -65,6 +65,7 @@ def create_reference(
         abstract=reference.abstract,
         raw_bibtex=reference.raw_bibtex,
         extra_fields=reference.extra_fields,
+        legend_category=reference.legend_category.upper() if reference.legend_category else None,
         user_id=user.id if user else None
     )
 
@@ -125,6 +126,7 @@ def import_bibtex(
                 abstract=entry.get('abstract'),
                 raw_bibtex=entry['raw_bibtex'],
                 extra_fields=entry.get('extra_fields'),
+                legend_category=bibtex_import.legend_category.upper() if bibtex_import.legend_category else None,
                 user_id=user.id if user else None
             )
             db_reference.taxonomies = taxonomies
@@ -180,6 +182,10 @@ def update_reference(
         if taxonomy_ids is not None:
             taxonomies = db.query(Taxonomy).filter(Taxonomy.id.in_(taxonomy_ids)).all()
             reference.taxonomies = taxonomies
+
+    # Normalize legend_category to uppercase
+    if 'legend_category' in update_data and update_data['legend_category']:
+        update_data['legend_category'] = update_data['legend_category'].upper()
 
     for key, value in update_data.items():
         setattr(reference, key, value)

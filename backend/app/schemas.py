@@ -264,12 +264,14 @@ class BibMapUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     is_published: Optional[bool] = None
+    settings_json: Optional[str] = None
 
 
 class BibMap(BibMapBase):
     id: int
     user_id: Optional[str] = None
     is_published: bool = False
+    settings_json: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     nodes: List[Node] = []
@@ -283,6 +285,7 @@ class BibMapSummary(BibMapBase):
     id: int
     user_id: Optional[str] = None
     is_published: bool = False
+    settings_json: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -308,6 +311,7 @@ class ReferenceBase(BaseModel):
     abstract: Optional[str] = None
     raw_bibtex: str
     extra_fields: Optional[str] = None
+    legend_category: Optional[str] = None
 
 
 class ReferenceCreate(ReferenceBase):
@@ -328,6 +332,7 @@ class ReferenceUpdate(BaseModel):
     url: Optional[str] = None
     abstract: Optional[str] = None
     taxonomy_ids: Optional[List[int]] = None
+    legend_category: Optional[str] = None
 
 
 class Reference(ReferenceBase):
@@ -345,6 +350,7 @@ class Reference(ReferenceBase):
 class BibTeXImport(BaseModel):
     bibtex_content: str
     taxonomy_ids: Optional[List[int]] = []
+    legend_category: Optional[str] = None
 
 
 class BibTeXImportResult(BaseModel):
@@ -363,6 +369,7 @@ class MediaBase(BaseModel):
     title: str
     url: str
     description: Optional[str] = None
+    legend_category: Optional[str] = None
 
 
 class MediaCreate(MediaBase):
@@ -374,6 +381,7 @@ class MediaUpdate(BaseModel):
     url: Optional[str] = None
     description: Optional[str] = None
     taxonomy_ids: Optional[List[int]] = None
+    legend_category: Optional[str] = None
 
 
 class Media(MediaBase):
@@ -385,3 +393,20 @@ class Media(MediaBase):
 
     class Config:
         from_attributes = True
+
+
+# Node Reference/Media with match reasons
+class MatchReason(BaseModel):
+    type: str  # "taxonomy" or "legend_category"
+    taxonomy_id: Optional[int] = None
+    taxonomy_name: Optional[str] = None
+    taxonomy_color: Optional[str] = None
+    legend_category: Optional[str] = None
+
+
+class ReferenceWithMatch(Reference):
+    match_reasons: List[MatchReason] = []
+
+
+class MediaWithMatch(Media):
+    match_reasons: List[MatchReason] = []

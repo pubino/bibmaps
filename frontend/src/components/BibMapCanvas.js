@@ -1355,20 +1355,50 @@ export class BibMapCanvas {
     return this.nodes.find(n => n.id === id);
   }
 
-  setReadOnly(enabled) {
+  setReadOnly(enabled, options = {}) {
     this.readOnly = enabled;
+    const { enableLinkedReferences = false, onNodeClick = null } = options;
+
     if (enabled) {
-      // Disable all interactions
+      // Disable editing interactions but keep zoom/pan
       this.connectMode = false;
       this.clearSelection();
       this.clearConnectionSelection();
-      // Remove click handlers from nodes temporarily
+
+      // Remove edit handlers from nodes but optionally allow click for linked references
       this.nodesLayer.selectAll('.node-group')
-        .style('cursor', 'default')
-        .on('click', null);
+        .style('cursor', enableLinkedReferences ? 'pointer' : 'default')
+        .on('.drag', null)  // Remove drag handlers
+        .on('mouseenter', null)
+        .on('mouseleave', null);
+
+      // If linked references are enabled, set up click handler
+      if (enableLinkedReferences && onNodeClick) {
+        this.nodesLayer.selectAll('.node-group')
+          .on('click', (event, d) => {
+            event.stopPropagation();
+            // d is passed directly by D3's data binding
+            if (d && d.link_to_references) {
+              onNodeClick(d);
+            }
+          });
+      } else {
+        this.nodesLayer.selectAll('.node-group')
+          .on('click', null);
+      }
+
+      // Remove resize handles
+      this.nodesLayer.selectAll('.resize-handle')
+        .style('display', 'none')
+        .on('.drag', null);
+
+      // Disable connection selection
       this.connectionsLayer.selectAll('.connection-line')
         .style('cursor', 'default')
         .on('click', null);
+
+      // Keep zoom/pan enabled for read-only viewers
+      // (zoom is set up in setupZoomAndPan, we just don't disable it here)
     } else {
       // Re-render to restore all handlers
       this.render();

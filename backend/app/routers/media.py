@@ -46,6 +46,7 @@ def create_media(
         title=media.title,
         url=media.url,
         description=media.description,
+        legend_category=media.legend_category.upper() if media.legend_category else None,
         user_id=user.id if user else None
     )
 
@@ -97,6 +98,10 @@ def update_media(
         if taxonomy_ids is not None:
             taxonomies = db.query(Taxonomy).filter(Taxonomy.id.in_(taxonomy_ids)).all()
             media.taxonomies = taxonomies
+
+    # Normalize legend_category to uppercase
+    if 'legend_category' in update_data and update_data['legend_category']:
+        update_data['legend_category'] = update_data['legend_category'].upper()
 
     for key, value in update_data.items():
         setattr(media, key, value)

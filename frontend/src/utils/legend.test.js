@@ -6,7 +6,7 @@ import {
   generateLegendLabels,
   createLegendItemElement,
   isValidHexColor,
-  parseLegendMetadata,
+  parseLegendSettings,
   createReadOnlyLegendItemElement
 } from './legend.js';
 
@@ -223,61 +223,61 @@ describe('Legend Utilities', () => {
     });
   });
 
-  describe('parseLegendMetadata', () => {
-    it('should return defaults for null metadata', () => {
-      const result = parseLegendMetadata(null);
+  describe('parseLegendSettings', () => {
+    it('should return defaults for null settings', () => {
+      const result = parseLegendSettings(null);
       expect(result).toEqual({ showLegend: false, legendLabels: {} });
     });
 
-    it('should return defaults for undefined metadata', () => {
-      const result = parseLegendMetadata(undefined);
+    it('should return defaults for undefined settings', () => {
+      const result = parseLegendSettings(undefined);
       expect(result).toEqual({ showLegend: false, legendLabels: {} });
     });
 
     it('should return defaults for empty string', () => {
-      const result = parseLegendMetadata('');
+      const result = parseLegendSettings('');
       expect(result).toEqual({ showLegend: false, legendLabels: {} });
     });
 
     it('should return defaults for invalid JSON', () => {
-      const result = parseLegendMetadata('not valid json');
+      const result = parseLegendSettings('not valid json');
       expect(result).toEqual({ showLegend: false, legendLabels: {} });
     });
 
     it('should parse showLegend as true', () => {
-      const metadata = JSON.stringify({ showLegend: true });
-      const result = parseLegendMetadata(metadata);
+      const settings = JSON.stringify({ showLegend: true });
+      const result = parseLegendSettings(settings);
       expect(result.showLegend).toBe(true);
     });
 
     it('should parse showLegend as false', () => {
-      const metadata = JSON.stringify({ showLegend: false });
-      const result = parseLegendMetadata(metadata);
+      const settings = JSON.stringify({ showLegend: false });
+      const result = parseLegendSettings(settings);
       expect(result.showLegend).toBe(false);
     });
 
     it('should parse legendLabels', () => {
-      const metadata = JSON.stringify({
+      const settings = JSON.stringify({
         showLegend: true,
         legendLabels: { '#FF0000': 'Important', '#00FF00': 'Secondary' }
       });
-      const result = parseLegendMetadata(metadata);
+      const result = parseLegendSettings(settings);
       expect(result.legendLabels).toEqual({
         '#FF0000': 'Important',
         '#00FF00': 'Secondary'
       });
     });
 
-    it('should handle metadata without showLegend', () => {
-      const metadata = JSON.stringify({ legendLabels: { '#FF0000': 'Test' } });
-      const result = parseLegendMetadata(metadata);
+    it('should handle settings without showLegend', () => {
+      const settings = JSON.stringify({ legendLabels: { '#FF0000': 'Test' } });
+      const result = parseLegendSettings(settings);
       expect(result.showLegend).toBe(false);
       expect(result.legendLabels).toEqual({ '#FF0000': 'Test' });
     });
 
-    it('should handle metadata without legendLabels', () => {
-      const metadata = JSON.stringify({ showLegend: true });
-      const result = parseLegendMetadata(metadata);
+    it('should handle settings without legendLabels', () => {
+      const settings = JSON.stringify({ showLegend: true });
+      const result = parseLegendSettings(settings);
       expect(result.showLegend).toBe(true);
       expect(result.legendLabels).toEqual({});
     });
