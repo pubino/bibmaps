@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BibMap</title>
+  <link rel="stylesheet" href="/src/styles/main.css">
+</head>
+<body>
+  <div id="app">
+    <header role="banner">
+      <h1>BibMap</h1>
+      <nav role="navigation" aria-label="Main navigation">
+        <button id="nav-bibmaps" class="nav-btn active" aria-pressed="true">BibMaps</button>
+        <button id="nav-references" class="nav-btn" aria-pressed="false">References</button>
+        <button id="nav-media" class="nav-btn" aria-pressed="false" disabled title="Coming soon">Media</button>
+        <button id="nav-taxonomies" class="nav-btn" aria-pressed="false">Tags</button>
+        <button id="nav-settings" class="nav-btn" aria-pressed="false" disabled title="Coming soon">Settings</button>
+        <button id="nav-about" class="nav-btn" aria-pressed="false">About</button>
+      </nav>
+      <div id="user-info" role="status" aria-live="polite"></div>
+    </header>
+
+    <main role="main">
+      <!-- BibMaps Section -->
+      <section id="bibmaps-section" class="section active" aria-labelledby="bibmaps-heading">
+        <div class="section-header">
+          <h2 id="bibmaps-heading">BibMaps</h2>
+          <div class="header-actions">
+            <button id="import-bibmap" class="btn-secondary">
+              <span aria-hidden="true">&#8593;</span> Import BibMap
+            </button>
+            <button id="create-bibmap" class="btn-primary">
+              <span aria-hidden="true">+</span> New BibMap
+            </button>
+          </div>
+        </div>
+        <div id="bibmaps-list" class="card-grid" role="list" aria-label="BibMaps"></div>
+        <!-- Hidden file input for importing .bibmap files -->
+        <input type="file" id="bibmap-file-input" accept=".bibmap,.zip" hidden>
+      </section>
+
+      <!-- BibMap Editor -->
+      <section id="editor-section" class="section" aria-labelledby="editor-heading" hidden>
+        <div class="editor-toolbar" role="toolbar" aria-label="BibMap editing tools">
+          <button id="back-to-list" class="btn-secondary" aria-label="Back to BibMaps list">
+            &larr; Back
+          </button>
+          <h2 id="editor-heading" class="editor-title"></h2>
+          <div class="tool-group">
+            <button id="add-node" class="tool-btn" aria-label="Add new node" title="Add Node">
+              <span aria-hidden="true">&#9634;</span> Add Node
+            </button>
+            <button id="connect-mode" class="tool-btn" aria-label="Toggle connection mode" title="Connect Nodes" aria-pressed="false">
+              <span aria-hidden="true">&#8594;</span> Connect
+            </button>
+            <button id="duplicate-btn" class="tool-btn" aria-label="Duplicate selected" title="Duplicate" disabled>
+              <span aria-hidden="true">&#10064;</span> Duplicate
+            </button>
+            <button id="delete-btn" class="tool-btn tool-btn-danger" aria-label="Delete selected" title="Delete" disabled>
+              <span aria-hidden="true">&#128465;</span> Delete
+            </button>
+            <label class="toggle-label-toolbar" for="snap-to-grid">
+              <input type="checkbox" id="snap-to-grid" aria-label="Snap to grid">
+              <span>Snap to Grid</span>
+            </label>
+          </div>
+          <div class="tool-group publish-group">
+            <button id="edit-bibmap" class="tool-btn" aria-label="Edit BibMap details" title="Edit Details">
+              <span aria-hidden="true">&#9998;</span> Edit Details
+            </button>
+            <label class="toggle-label" for="publish-toggle">
+              <input type="checkbox" id="publish-toggle" aria-label="Publish this BibMap">
+              <span class="toggle-text">Published</span>
+            </label>
+            <button id="copy-link" class="tool-btn" aria-label="Copy shareable link" title="Copy Link" hidden>
+              <span aria-hidden="true">&#128279;</span> Copy Link
+            </button>
+          </div>
+        </div>
+
+        <!-- Accessible BibMap canvas -->
+        <div id="bibmap-container" role="application" aria-label="BibMap canvas. Use arrow keys to navigate between nodes, Enter to select, Delete to remove.">
+          <svg id="bibmap-svg" aria-hidden="true">
+            <defs>
+              <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                <polygon points="0 0, 10 3.5, 0 7" fill="#6B7280"/>
+              </marker>
+            </defs>
+            <g id="connections-layer"></g>
+            <g id="nodes-layer"></g>
+          </svg>
+          <!-- Screen reader accessible node list -->
+          <div id="sr-node-list" class="sr-only" role="list" aria-label="BibMap nodes"></div>
+        </div>
+
+        <!-- Editor Panels Container -->
+        <div class="editor-panels">
+          <!-- Node Properties Panel -->
+          <aside id="properties-panel" class="panel" aria-labelledby="properties-heading" hidden>
+            <div class="panel-header">
+              <h3 id="properties-heading">Node Properties</h3>
+              <button type="button" id="delete-node" class="btn-icon btn-danger-icon" aria-label="Delete node" title="Delete node">
+                <span aria-hidden="true">&#128465;</span>
+              </button>
+            </div>
+            <div id="node-properties-form">
+              <div class="form-group">
+                <label for="prop-label">Label:</label>
+                <input type="text" id="prop-label" required>
+              </div>
+              <div class="form-group">
+                <label class="toggle-label-inline" for="prop-wrap-text">
+                  <input type="checkbox" id="prop-wrap-text" checked>
+                  <span>Wrap text to node size</span>
+                </label>
+              </div>
+              <div class="form-group">
+                <label for="prop-description">Description:</label>
+                <textarea id="prop-description" rows="3"></textarea>
+              </div>
+              <div class="form-group-inline">
+                <label for="prop-bg-color">Background:</label>
+                <input type="color" id="prop-bg-color">
+                <label for="prop-text-color">Text:</label>
+                <input type="color" id="prop-text-color">
+              </div>
+              <div class="form-group">
+                <div class="text-style-controls">
+                  <select id="prop-font-family" aria-label="Font family">
+                    <option value="system-ui">System</option>
+                    <option value="Arial, sans-serif">Arial</option>
+                    <option value="Georgia, serif">Georgia</option>
+                    <option value="monospace">Monospace</option>
+                  </select>
+                  <input type="number" id="prop-font-size" min="8" max="48" value="14" aria-label="Font size" title="Font size">
+                  <button type="button" id="prop-bold" class="style-btn" aria-label="Bold" title="Bold"><b>B</b></button>
+                  <button type="button" id="prop-italic" class="style-btn" aria-label="Italic" title="Italic"><i>I</i></button>
+                  <button type="button" id="prop-underline" class="style-btn" aria-label="Underline" title="Underline"><u>U</u></button>
+                </div>
+              </div>
+              <div class="form-group">
+                <select id="prop-shape" aria-label="Node shape">
+                  <option value="rectangle">Rectangle</option>
+                  <option value="rounded-rectangle">Rounded Rectangle</option>
+                  <option value="ellipse">Ellipse</option>
+                  <option value="diamond">Diamond</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <select id="prop-node-style" aria-label="Node style">
+                  <option value="flat">Flat</option>
+                  <option value="bevel">Bevel</option>
+                  <option value="emboss">Emboss</option>
+                  <option value="outline">Outline</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <div class="tag-input-container" id="node-tag-input-container">
+                  <div class="selected-tags" id="node-selected-tags"></div>
+                  <input type="text" id="node-tag-search" class="tag-search-input" placeholder="Type to add tags..." autocomplete="off">
+                  <div class="tag-suggestions" id="node-tag-suggestions" hidden></div>
+                </div>
+              </div>
+              <div class="form-group" id="link-refs-group">
+                <label class="toggle-label-inline" for="prop-link-refs">
+                  <input type="checkbox" id="prop-link-refs" disabled>
+                  <span>Link to Tagged References</span>
+                </label>
+                <p class="help-text" id="link-refs-help">Add tags above to enable linking to references</p>
+              </div>
+            </div>
+            <div id="node-references" hidden>
+              <a href="#" id="node-refs-link" class="refs-link btn-secondary btn-sm">View Linked References (<span id="node-refs-count">0</span>)</a>
+            </div>
+          </aside>
+
+          <!-- Connection Properties Panel -->
+          <aside id="connection-panel" class="panel" aria-labelledby="connection-heading" hidden>
+            <div class="panel-header">
+              <h3 id="connection-heading">Connection Properties</h3>
+              <button type="button" id="delete-connection" class="btn-icon btn-danger-icon" aria-label="Delete connection" title="Delete connection">
+                <span aria-hidden="true">&#128465;</span>
+              </button>
+            </div>
+            <div id="connection-properties-form">
+              <div class="form-group">
+                <label for="conn-label">Label:</label>
+                <input type="text" id="conn-label" placeholder="Optional label">
+              </div>
+              <div class="form-group">
+                <label class="toggle-label-inline" for="conn-show-label">
+                  <input type="checkbox" id="conn-show-label">
+                  <span>Show connection label</span>
+                </label>
+              </div>
+              <div class="form-group-inline">
+                <label for="conn-line-color">Color:</label>
+                <input type="color" id="conn-line-color" value="#6B7280">
+                <label for="conn-line-width">Thickness:</label>
+                <input type="number" id="conn-line-width" min="1" max="10" value="2" class="line-width-input">
+              </div>
+              <div class="form-group">
+                <label for="conn-line-style">Style:</label>
+                <select id="conn-line-style">
+                  <option value="solid">Solid</option>
+                  <option value="dashed">Dashed</option>
+                  <option value="dotted">Dotted</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="conn-arrow-type">Arrow:</label>
+                <select id="conn-arrow-type">
+                  <option value="end">End</option>
+                  <option value="both">Both</option>
+                  <option value="none">None</option>
+                </select>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- References Section -->
+      <section id="references-section" class="section" aria-labelledby="references-heading" hidden>
+        <div class="section-header">
+          <h2 id="references-heading">Academic References</h2>
+          <button id="import-bibtex" class="btn-primary">
+            <span aria-hidden="true">&#8593;</span> Import BibTeX
+          </button>
+        </div>
+        <div class="filter-bar">
+          <div class="filter-group">
+            <label for="ref-title-filter">Search:</label>
+            <input type="text" id="ref-title-filter" placeholder="Filter by title or author..." class="filter-input">
+          </div>
+          <div class="filter-group">
+            <label for="ref-taxonomy-filter">Tag:</label>
+            <select id="ref-taxonomy-filter">
+              <option value="">All</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label for="ref-sort">Sort by:</label>
+            <select id="ref-sort">
+              <option value="imported-desc">Date Imported (Newest)</option>
+              <option value="imported-asc">Date Imported (Oldest)</option>
+              <option value="year-desc">Publication Year (Newest)</option>
+              <option value="year-asc">Publication Year (Oldest)</option>
+              <option value="title-asc">Title (A-Z)</option>
+              <option value="title-desc">Title (Z-A)</option>
+              <option value="author-asc">Author (A-Z)</option>
+              <option value="author-desc">Author (Z-A)</option>
+            </select>
+          </div>
+        </div>
+        <div id="references-list" class="references-grid" role="list" aria-label="References"></div>
+        <div class="pagination-bar">
+          <div class="pagination-info">
+            <span id="ref-pagination-info">Showing 0 of 0 references</span>
+          </div>
+          <div class="pagination-controls">
+            <button id="ref-prev-page" class="btn-secondary btn-sm" disabled>&larr; Previous</button>
+            <span id="ref-page-indicator">Page 1</span>
+            <button id="ref-next-page" class="btn-secondary btn-sm" disabled>Next &rarr;</button>
+          </div>
+          <div class="pagination-size">
+            <label for="ref-page-size">Show:</label>
+            <select id="ref-page-size">
+              <option value="20" selected>20</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+              <option value="200">200</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tags Section -->
+      <section id="taxonomies-section" class="section" aria-labelledby="taxonomies-heading" hidden>
+        <div class="section-header">
+          <h2 id="taxonomies-heading">Tags</h2>
+          <button id="create-taxonomy" class="btn-primary">
+            <span aria-hidden="true">+</span> New Tag
+          </button>
+        </div>
+        <div class="filter-bar">
+          <div class="filter-group">
+            <label for="tax-name-filter">Search:</label>
+            <input type="text" id="tax-name-filter" placeholder="Filter by name..." class="filter-input">
+          </div>
+          <div class="filter-group">
+            <label for="tax-sort">Sort by:</label>
+            <select id="tax-sort">
+              <option value="created-desc">Date Added (Newest)</option>
+              <option value="created-asc">Date Added (Oldest)</option>
+              <option value="modified-desc">Date Modified (Newest)</option>
+              <option value="modified-asc">Date Modified (Oldest)</option>
+              <option value="name-asc">Name (A-Z)</option>
+              <option value="name-desc">Name (Z-A)</option>
+            </select>
+          </div>
+        </div>
+        <div id="taxonomies-list" class="card-grid" role="list" aria-label="Tags"></div>
+      </section>
+
+      <!-- Node References Section (full page view) -->
+      <section id="node-refs-section" class="section" aria-labelledby="node-refs-heading" hidden>
+        <div class="section-header">
+          <button id="back-to-editor" class="btn-secondary" aria-label="Back to BibMap editor">
+            &larr; Back to Editor
+          </button>
+          <h2 id="node-refs-heading">References for "<span id="node-refs-node-name"></span>"</h2>
+        </div>
+        <p id="node-refs-description" class="section-description"></p>
+        <div id="node-refs-page-content" class="references-grid" role="list" aria-label="Node References"></div>
+      </section>
+
+      <!-- About Section -->
+      <section id="about-section" class="section" aria-labelledby="about-heading" hidden>
+        <div class="about-content">
+          <h2 id="about-heading">About BibMap</h2>
+          <p class="about-tagline">Visual Bibliography Mapping for Researchers</p>
+
+          <div class="about-description">
+            <p>BibMap is a visual tool designed to help researchers, academics, and students organize and explore their bibliographic references through interactive mind maps.</p>
+
+            <h3>Features</h3>
+            <ul>
+              <li><strong>Visual Mapping</strong> - Create visual maps to organize your research topics and concepts</li>
+              <li><strong>Reference Management</strong> - Import and manage academic references from BibTeX files</li>
+              <li><strong>Smart Tagging</strong> - Tag nodes and references for easy cross-referencing</li>
+              <li><strong>Linked References</strong> - Connect nodes to relevant references automatically based on tags</li>
+              <li><strong>Export &amp; Share</strong> - Export your BibMaps and share published maps with others</li>
+            </ul>
+
+            <h3>Getting Started</h3>
+            <ol>
+              <li>Create a new BibMap from the BibMaps page</li>
+              <li>Add nodes to represent your research topics or concepts</li>
+              <li>Import your references using BibTeX format</li>
+              <li>Tag your nodes and references to link them together</li>
+              <li>Use connections to show relationships between concepts</li>
+            </ol>
+
+            <h3>Keyboard Shortcuts</h3>
+            <ul class="shortcuts-list">
+              <li><kbd>Arrow Keys</kbd> - Navigate between nodes</li>
+              <li><kbd>Enter</kbd> - Select node</li>
+              <li><kbd>Escape</kbd> - Deselect / Cancel</li>
+              <li><kbd>Double-click</kbd> - Reset zoom</li>
+            </ul>
+          </div>
+
+          <p class="about-version">Version 1.0.0</p>
+        </div>
+      </section>
+    </main>
+
+    <!-- Modals -->
+    <div id="modal-overlay" class="modal-overlay" hidden>
+      <!-- Create/Edit BibMap Modal -->
+      <dialog id="create-bibmap-modal" class="modal" aria-labelledby="create-bm-title">
+        <div class="panel-header">
+          <h2 id="create-bm-title">Create BibMap</h2>
+          <button type="button" id="delete-bibmap-btn" class="btn-icon btn-danger-icon" aria-label="Delete BibMap" title="Delete BibMap" hidden>
+            <span aria-hidden="true">&#128465;</span>
+          </button>
+        </div>
+        <form id="create-bibmap-form">
+          <div class="form-group">
+            <label for="bm-title">Title:</label>
+            <input type="text" id="bm-title" required>
+          </div>
+          <div class="form-group">
+            <label for="bm-description">Description:</label>
+            <textarea id="bm-description" rows="3"></textarea>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn-primary" id="bm-submit-btn">Create</button>
+            <button type="button" class="btn-secondary modal-close">Cancel</button>
+          </div>
+        </form>
+      </dialog>
+
+      <!-- Import BibTeX Modal -->
+      <dialog id="import-bibtex-modal" class="modal modal-lg" aria-labelledby="import-bibtex-title">
+        <h2 id="import-bibtex-title">Import BibTeX References</h2>
+        <form id="import-bibtex-form">
+          <div class="form-group">
+            <label for="bibtex-file">Upload BibTeX file:</label>
+            <input type="file" id="bibtex-file" accept=".bib,.bibtex,.txt" class="file-input">
+          </div>
+          <div class="form-group">
+            <label for="bibtex-content">Or paste BibTeX content:</label>
+            <textarea id="bibtex-content" rows="10" placeholder="@article{key,
+  author = {Author Name},
+  title = {Paper Title},
+  ...
+}"></textarea>
+          </div>
+          <div class="form-group">
+            <label>Apply tags:</label>
+            <div class="tag-input-container" id="import-tag-input-container">
+              <div class="selected-tags" id="import-selected-tags"></div>
+              <input type="text" id="import-tag-search" class="tag-search-input" placeholder="Type to add tags..." autocomplete="off">
+              <div class="tag-suggestions" id="import-tag-suggestions" hidden></div>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn-primary">Import</button>
+            <button type="button" class="btn-secondary modal-close">Cancel</button>
+          </div>
+        </form>
+        <div id="import-result" hidden>
+          <h3>Import Results</h3>
+          <p id="import-summary"></p>
+          <div id="import-duplicates" hidden>
+            <h4>Duplicates Found (skipped to protect existing data):</h4>
+            <ul id="import-duplicates-list"></ul>
+          </div>
+          <div id="import-errors-container" hidden>
+            <h4>Errors:</h4>
+            <ul id="import-errors"></ul>
+          </div>
+        </div>
+      </dialog>
+
+      <!-- Create/Edit Tag Modal -->
+      <dialog id="create-taxonomy-modal" class="modal" aria-labelledby="create-tax-title">
+        <h2 id="create-tax-title">Create Tag</h2>
+        <form id="create-taxonomy-form">
+          <div class="form-group">
+            <label for="tax-name">Name:</label>
+            <input type="text" id="tax-name" required>
+          </div>
+          <div class="form-group">
+            <label for="tax-description">Description:</label>
+            <textarea id="tax-description" rows="2"></textarea>
+          </div>
+          <div class="form-group">
+            <label for="tax-color">Color:</label>
+            <input type="color" id="tax-color" value="#6B7280">
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn-primary" id="tax-submit-btn">Create</button>
+            <button type="button" class="btn-secondary modal-close">Cancel</button>
+          </div>
+        </form>
+      </dialog>
+
+      <!-- Confirmation Modal -->
+      <dialog id="confirm-modal" class="modal modal-confirm" aria-labelledby="confirm-title">
+        <h2 id="confirm-title">Confirm</h2>
+        <p id="confirm-message"></p>
+        <div class="form-actions">
+          <button type="button" id="confirm-yes" class="btn-danger">Delete</button>
+          <button type="button" id="confirm-no" class="btn-secondary">Cancel</button>
+        </div>
+      </dialog>
+
+      <!-- Reference Detail Modal -->
+      <dialog id="reference-detail-modal" class="modal modal-lg" aria-labelledby="ref-detail-title">
+        <h2 id="ref-detail-title">Reference Details</h2>
+        <div id="reference-detail-content"></div>
+        <div class="form-group">
+          <label>Tags:</label>
+          <div class="tag-input-container" id="ref-tag-input-container">
+            <div class="selected-tags" id="ref-selected-tags"></div>
+            <input type="text" id="ref-tag-search" class="tag-search-input" placeholder="Type to add tags..." autocomplete="off">
+            <div class="tag-suggestions" id="ref-tag-suggestions" hidden></div>
+          </div>
+        </div>
+        <div class="form-group" id="edit-bibtex-section">
+          <details>
+            <summary>Edit BibTeX</summary>
+            <textarea id="ref-edit-bibtex" rows="10" class="bibtex-editor"></textarea>
+            <div class="form-actions">
+              <button type="button" id="update-bibtex-btn" class="btn-primary btn-sm">Update from BibTeX</button>
+            </div>
+          </details>
+        </div>
+        <div class="form-actions">
+          <button type="button" id="delete-reference-btn" class="btn-danger">Delete Reference</button>
+          <button type="button" class="btn-secondary modal-close">Close</button>
+        </div>
+      </dialog>
+
+    </div>
+
+    <!-- Live region for announcements -->
+    <div id="announcer" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

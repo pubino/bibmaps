@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  backend-test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+      target: backend-test
+    command: pytest -v --tb=short
+
+  frontend-test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+      target: frontend-test
+    command: npm run test:run

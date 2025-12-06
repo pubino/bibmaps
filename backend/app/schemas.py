@@ -1,0 +1,230 @@
+from pydantic import BaseModel, Field
+from typing import Optional, List
+from datetime import datetime
+
+
+# Taxonomy Schemas
+class TaxonomyBase(BaseModel):
+    name: str
+    description: Optional[str] = None
+    color: str = "#6B7280"
+
+
+class TaxonomyCreate(TaxonomyBase):
+    pass
+
+
+class TaxonomyUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    color: Optional[str] = None
+
+
+class Taxonomy(TaxonomyBase):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# Node Schemas
+class NodeBase(BaseModel):
+    label: str
+    description: Optional[str] = None
+    x: float = 0.0
+    y: float = 0.0
+    background_color: str = "#3B82F6"
+    text_color: str = "#FFFFFF"
+    border_color: str = "#1E40AF"
+    font_size: int = 14
+    font_family: str = "system-ui"
+    font_bold: bool = False
+    font_italic: bool = False
+    font_underline: bool = False
+    width: float = 150
+    height: float = 60
+    shape: str = "rectangle"
+    link_to_references: bool = True
+    wrap_text: bool = True
+
+
+class NodeCreate(NodeBase):
+    bibmap_id: int
+    taxonomy_ids: Optional[List[int]] = []
+
+
+class NodeUpdate(BaseModel):
+    label: Optional[str] = None
+    description: Optional[str] = None
+    x: Optional[float] = None
+    y: Optional[float] = None
+    background_color: Optional[str] = None
+    text_color: Optional[str] = None
+    border_color: Optional[str] = None
+    font_size: Optional[int] = None
+    font_family: Optional[str] = None
+    font_bold: Optional[bool] = None
+    font_italic: Optional[bool] = None
+    font_underline: Optional[bool] = None
+    width: Optional[float] = None
+    height: Optional[float] = None
+    shape: Optional[str] = None
+    link_to_references: Optional[bool] = None
+    wrap_text: Optional[bool] = None
+    taxonomy_ids: Optional[List[int]] = None
+
+
+class Node(NodeBase):
+    id: int
+    bibmap_id: int
+    created_at: datetime
+    updated_at: datetime
+    taxonomies: List[Taxonomy] = []
+
+    class Config:
+        from_attributes = True
+
+
+# Connection Schemas
+class ConnectionBase(BaseModel):
+    source_node_id: int
+    target_node_id: int
+    line_color: str = "#6B7280"
+    line_width: int = 2
+    line_style: str = "solid"
+    arrow_type: str = "arrow"
+    label: Optional[str] = None
+    show_label: bool = False
+
+
+class ConnectionCreate(ConnectionBase):
+    bibmap_id: int
+
+
+class ConnectionUpdate(BaseModel):
+    source_node_id: Optional[int] = None
+    target_node_id: Optional[int] = None
+    line_color: Optional[str] = None
+    line_width: Optional[int] = None
+    line_style: Optional[str] = None
+    arrow_type: Optional[str] = None
+    label: Optional[str] = None
+    show_label: Optional[bool] = None
+
+
+class Connection(ConnectionBase):
+    id: int
+    bibmap_id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# BibMap Schemas
+class BibMapBase(BaseModel):
+    title: str
+    description: Optional[str] = None
+
+
+class BibMapCreate(BibMapBase):
+    pass
+
+
+class BibMapUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    is_published: Optional[bool] = None
+
+
+class BibMap(BibMapBase):
+    id: int
+    user_id: Optional[str] = None
+    is_published: bool = False
+    created_at: datetime
+    updated_at: datetime
+    nodes: List[Node] = []
+    connections: List[Connection] = []
+
+    class Config:
+        from_attributes = True
+
+
+class BibMapSummary(BibMapBase):
+    id: int
+    user_id: Optional[str] = None
+    is_published: bool = False
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# Reference Schemas
+class ReferenceBase(BaseModel):
+    bibtex_key: str
+    entry_type: str
+    title: Optional[str] = None
+    author: Optional[str] = None
+    year: Optional[str] = None
+    journal: Optional[str] = None
+    booktitle: Optional[str] = None
+    publisher: Optional[str] = None
+    volume: Optional[str] = None
+    number: Optional[str] = None
+    pages: Optional[str] = None
+    doi: Optional[str] = None
+    url: Optional[str] = None
+    abstract: Optional[str] = None
+    raw_bibtex: str
+    extra_fields: Optional[str] = None
+
+
+class ReferenceCreate(ReferenceBase):
+    taxonomy_ids: Optional[List[int]] = []
+
+
+class ReferenceUpdate(BaseModel):
+    title: Optional[str] = None
+    author: Optional[str] = None
+    year: Optional[str] = None
+    journal: Optional[str] = None
+    booktitle: Optional[str] = None
+    publisher: Optional[str] = None
+    volume: Optional[str] = None
+    number: Optional[str] = None
+    pages: Optional[str] = None
+    doi: Optional[str] = None
+    url: Optional[str] = None
+    abstract: Optional[str] = None
+    taxonomy_ids: Optional[List[int]] = None
+
+
+class Reference(ReferenceBase):
+    id: int
+    user_id: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    taxonomies: List[Taxonomy] = []
+
+    class Config:
+        from_attributes = True
+
+
+# BibTeX Import
+class BibTeXImport(BaseModel):
+    bibtex_content: str
+    taxonomy_ids: Optional[List[int]] = []
+
+
+class BibTeXImportResult(BaseModel):
+    imported: int
+    errors: List[str] = []
+    references: List[Reference] = []
+
+
+# BibTeX Update (for editing existing reference)
+class BibTeXUpdate(BaseModel):
+    bibtex_content: str

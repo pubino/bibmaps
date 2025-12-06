@@ -1,0 +1,22 @@
+FROM python:3.11-slim AS backend-test
+
+WORKDIR /app/backend
+
+COPY backend/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY backend/ .
+
+CMD ["pytest", "-v", "--tb=short"]
+
+# Frontend test stage
+FROM node:20-alpine AS frontend-test
+
+WORKDIR /app/frontend
+
+COPY frontend/package*.json ./
+RUN npm ci
+
+COPY frontend/ .
+
+CMD ["npm", "run", "test:run"]
