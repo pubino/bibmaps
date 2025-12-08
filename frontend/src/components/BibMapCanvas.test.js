@@ -770,4 +770,40 @@ describe('BibMapCanvas', () => {
       expect(canvas.readOnly).toBe(true);
     });
   });
+
+  describe('Pattern Support for Accessibility', () => {
+    it('should initialize colorToPatternMap as empty object', () => {
+      expect(canvas.colorToPatternMap).toEqual({});
+    });
+
+    it('should have ensureSVGPatternDefinitions method', () => {
+      expect(typeof canvas.ensureSVGPatternDefinitions).toBe('function');
+    });
+
+    it('should update colorToPatternMap when renderNodes is called', () => {
+      canvas.nodes = [
+        { id: 1, x: 0, y: 0, background_color: '#FF0000' },
+        { id: 2, x: 100, y: 0, background_color: '#FF0000' },
+        { id: 3, x: 200, y: 0, background_color: '#00FF00' }
+      ];
+      canvas.renderNodes();
+
+      // colorToPatternMap should be populated
+      // FF0000 has 2 occurrences, 00FF00 has 1
+      expect(canvas.colorToPatternMap['#FF0000']).toBe(0);
+      expect(canvas.colorToPatternMap['#00FF00']).toBe(1);
+    });
+
+    it('should handle nodes without background_color using default', () => {
+      canvas.nodes = [
+        { id: 1, x: 0, y: 0 }, // No background_color
+        { id: 2, x: 100, y: 0, background_color: '#FF0000' }
+      ];
+      canvas.renderNodes();
+
+      // Default color #3B82F6 should be included
+      expect(canvas.colorToPatternMap['#3B82F6']).toBeDefined();
+      expect(canvas.colorToPatternMap['#FF0000']).toBeDefined();
+    });
+  });
 });

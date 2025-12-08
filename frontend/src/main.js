@@ -8,6 +8,10 @@ import {
   buildTagMappings,
   generateFilename
 } from './services/bibmapExport.js';
+import {
+  generateHtmlExport,
+  generateHtmlExportFilename
+} from './services/htmlExport.js';
 
 // State
 let currentSection = 'bibmaps';
@@ -1232,6 +1236,79 @@ async function downloadBibMap(bibmapId) {
   } catch (err) {
     announce(`Error downloading: ${err.message}`);
     console.error('Download error:', err);
+  }
+}
+
+async function exportBibMapAsHtml(bibmapId) {
+  try {
+    announce('Preparing HTML export...');
+
+    // Fetch the full BibMap with all data
+    const bibmap = await api.bibmaps.get(bibmapId);
+
+    // Fetch all references
+    const allRefs = await api.references.list();
+
+    // Get legend settings
+    let exportShowLegend = showLegend;
+    let exportLegendLabels = { ...legendLabels };
+
+    // Try to get settings from bibmap if available
+    if (bibmap.settings_json) {
+      try {
+        const settings = JSON.parse(bibmap.settings_json);
+        if (settings.showLegend !== undefined) {
+          exportShowLegend = settings.showLegend;
+        }
+        if (settings.legendLabels) {
+          exportLegendLabels = settings.legendLabels;
+        }
+      } catch (e) {
+        // Ignore parsing errors, use current state
+      }
+    }
+
+    // Generate the HTML export files
+    const files = await generateHtmlExport({
+      bibmap,
+      allReferences: allRefs,
+      showLegend: exportShowLegend,
+      legendLabels: exportLegendLabels,
+      getNodeReferences: async (nodeId) => {
+        try {
+          return await api.nodes.getReferences(nodeId);
+        } catch (e) {
+          return [];
+        }
+      }
+    });
+
+    // Create the ZIP file
+    const zip = new JSZip();
+
+    // Add all generated files to the ZIP
+    for (const [path, content] of Object.entries(files)) {
+      zip.file(path, content);
+    }
+
+    // Generate the ZIP and trigger download
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const filename = generateHtmlExportFilename(bibmap.title);
+
+    // Create download link
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    announce('HTML export started');
+  } catch (err) {
+    announce(`Error exporting HTML: ${err.message}`);
+    console.error('HTML export error:', err);
   }
 }
 
@@ -2612,6 +2689,12 @@ function setupEventListeners() {
     }
   });
 
+  // Export HTML button
+  document.getElementById('export-html').addEventListener('click', async () => {
+    if (!currentBibmap) return;
+    await exportBibMapAsHtml(currentBibmap.id);
+  });
+
   // Edit BibMap button
   document.getElementById('edit-bibmap').addEventListener('click', () => {
     openEditBibMap();
@@ -3202,9 +3285,9 @@ async function initShareView(bibmapId) {
         </svg>
         <div id="sr-node-list" class="sr-only" role="list" aria-label="BibMap nodes"></div>
         <!-- Legend Panel for share view (read-only) -->
-        <div id="legend-panel" class="legend-panel" role="region" aria-label="BibMap categories" hidden>
-          <h4 class="legend-title">Categories</h4>
-          <ul id="legend-items" class="legend-items" role="list" aria-label="Category list"></ul>
+        <div id="legend-panel" class="legend-panel" role="region" aria-label="BibMap legend" hidden>
+          <h4 class="legend-title">Legend</h4>
+          <ul id="legend-items" class="legend-items" role="list" aria-label="Legend categories"></ul>
         </div>
       </div>
       <!-- References panel for share view -->

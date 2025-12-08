@@ -1,36 +1,37 @@
 # BibMap - Task Notes
 
-## Project Status: VERIFIED COMPLETE
-All PRIMARY GOAL items verified - 2025-12-06:
+## Project Status: HTML EXPORT FEATURE COMPLETE ✓
+All PRIMARY GOAL items verified complete - 2025-12-08:
 - Backend: 171 tests passing
-- Frontend: 181 tests passing
+- Frontend: 277 tests passing (96 tests for HTML export)
+- CI test suite integration confirmed working
 
-## Architecture Verification
+## HTML Export Feature Implementation
 
-The PRIMARY GOAL requirements have been implemented as follows:
+### What was implemented:
+1. **Export HTML button** - Added next to Copy Link button in editor toolbar
+2. **Self-contained HTML export** - ZIP file containing:
+   - `index.html` - Main BibMap canvas view with D3.js rendering
+   - `styles.css` - Complete styling for offline viewing
+   - `app.js` - Canvas rendering, zoom/pan, node interaction
+   - `references/{nodeId}.html` - Reference list pages for nodes with `link_to_references`
+   - `references/{bibtexKey}.html` - Individual reference detail pages
+3. **Relative links** - All links use relative paths for portable re-hosting
+4. **Legend support** - Exports legend if enabled in BibMap settings
+5. **Full visual fidelity** - Node styles (flat/bevel/emboss/outline), shapes, connections preserved
 
-### 1. User-wide References/Media/Tags
-- All three models have `user_id` FK (not `bibmap_id`)
-- They are owned by users, not BibMaps
+### Key files:
+- `frontend/src/services/htmlExport.js` - HTML/CSS/JS generation module
+- `frontend/src/services/htmlExport.test.js` - 96 comprehensive tests
+- `frontend/index.html:91-93` - Export HTML button
+- `frontend/src/main.js:1242-1313` - `exportBibMapAsHtml()` function
+- `frontend/src/main.js:2619-2623` - Button event listener
 
-### 2. BibMap-specific Tag/Category Application
-- **Key insight**: The association is computed at runtime, not stored
-- Nodes belong to BibMaps and have Tags
-- When viewing a Node's references, `get_node_references` filters by matching Tags
-- Result: Same Reference can appear in different BibMaps based on Node Tags
-- Legend categories also matched at query time via node's `background_color`
-
-### 3. Export Filtering
-- `getLinkedReferences()` filters to only references sharing tags with nodes
-- `buildTagMappings()` only exports tags used by nodes
-- Note: No explicit warning dialog shown to user (minor UX gap)
-
-### 4. Import Duplicate Prevention
-- `references.py:103-109` checks for duplicate `bibtex_key`
-- Duplicates are skipped with error message
-
-### 5. Test Coverage
-- Comprehensive test suites protect all architecture decisions
+### Usage:
+1. Open a BibMap in the editor
+2. Click the package icon (📦) next to Copy Link
+3. Downloads `{bibmap_title}_html_export.zip`
+4. Extract and open `index.html` in any browser
 
 ## Quick Commands
 ```bash
@@ -45,7 +46,6 @@ cd frontend && npm run test:run
 - SQLite database at `data/bibmap.db`
 - Frontend: Vite + Vanilla JS, served via nginx
 - Backend: FastAPI + SQLAlchemy
-- Legend labels stored in `bibmap.metadata.legendLabels` JSON field
-- Legend category on references/media stored as hex color (e.g., "#FF5733")
-- Match reasons computed at query time, not stored
+- Legend labels stored in `bibmap.settings_json` JSON field
+- Node-to-reference linking computed at runtime via shared tags
 - Default node color (#3B82F6) excluded from legend matching

@@ -7,7 +7,9 @@ import {
   createLegendItemElement,
   isValidHexColor,
   parseLegendSettings,
-  createReadOnlyLegendItemElement
+  createReadOnlyLegendItemElement,
+  buildColorToPatternMap,
+  getPatternForColor
 } from './legend.js';
 
 describe('Legend Utilities', () => {
@@ -347,6 +349,160 @@ describe('Legend Utilities', () => {
 
       expect(element1.querySelector('.legend-color-indicator').dataset.pattern).toBe('stripes');
       expect(element2.querySelector('.legend-color-indicator').dataset.pattern).toBe('dots');
+    });
+  });
+
+  describe('buildColorToPatternMap', () => {
+    it('should return empty object for empty nodes array', () => {
+      const result = buildColorToPatternMap([]);
+      expect(result).toEqual({});
+    });
+
+    it('should map colors to pattern indices based on frequency', () => {
+      const nodes = [
+        { background_color: '#FF0000' },
+        { background_color: '#FF0000' },
+        { background_color: '#00FF00' },
+        { background_color: '#0000FF' },
+        { background_color: '#0000FF' },
+        { background_color: '#0000FF' }
+      ];
+      const result = buildColorToPatternMap(nodes);
+
+      // Blue (3) should be index 0, Red (2) should be index 1, Green (1) should be index 2
+      expect(result['#0000FF']).toBe(0);
+      expect(result['#FF0000']).toBe(1);
+      expect(result['#00FF00']).toBe(2);
+    });
+
+    it('should uppercase color keys', () => {
+      const nodes = [
+        { background_color: '#ff0000' },
+        { background_color: '#FF0000' }
+      ];
+      const result = buildColorToPatternMap(nodes);
+      expect(result['#FF0000']).toBe(0);
+      expect(result['#ff0000']).toBeUndefined();
+    });
+
+    it('should use default color for nodes without background_color', () => {
+      const nodes = [
+        {},
+        { background_color: '#FF0000' }
+      ];
+      const result = buildColorToPatternMap(nodes);
+      expect(result['#3B82F6']).toBeDefined();
+      expect(result['#FF0000']).toBeDefined();
+    });
+  });
+
+  describe('getPatternForColor', () => {
+    it('should return correct pattern based on colorToPattern map', () => {
+      const colorToPattern = {
+        '#FF0000': 0,
+        '#00FF00': 1,
+        '#0000FF': 2
+      };
+
+      expect(getPatternForColor('#FF0000', colorToPattern)).toBe('stripes');
+      expect(getPatternForColor('#00FF00', colorToPattern)).toBe('dots');
+      expect(getPatternForColor('#0000FF', colorToPattern)).toBe('crosshatch');
+    });
+
+    it('should handle lowercase color input', () => {
+      const colorToPattern = { '#FF0000': 0 };
+      expect(getPatternForColor('#ff0000', colorToPattern)).toBe('stripes');
+    });
+
+    it('should return null for colors not in map', () => {
+      const colorToPattern = { '#FF0000': 0 };
+      expect(getPatternForColor('#00FF00', colorToPattern)).toBeNull();
+    });
+
+    it('should use default color if input is null/undefined', () => {
+      const colorToPattern = { '#3B82F6': 0 };
+      expect(getPatternForColor(null, colorToPattern)).toBe('stripes');
+      expect(getPatternForColor(undefined, colorToPattern)).toBe('stripes');
+    });
+  });
+
+  describe('Pattern Consistency Across Representations', () => {
+    // These tests verify that the pattern assignment is consistent
+    // regardless of which representation (editor, share view, HTML export) uses it
+
+    it('should produce same pattern mapping for identical node sets', () => {
+      const nodes = [
+        { id: 1, background_color: '#FF0000' },
+        { id: 2, background_color: '#FF0000' },
+        { id: 3, background_color: '#00FF00' },
+        { id: 4, background_color: '#0000FF' }
+      ];
+
+      // Call buildColorToPatternMap multiple times - should always return same result
+      const map1 = buildColorToPatternMap(nodes);
+      const map2 = buildColorToPatternMap(nodes);
+      const map3 = buildColorToPatternMap([...nodes]); // Copy of array
+
+      expect(map1).toEqual(map2);
+      expect(map1).toEqual(map3);
+    });
+
+    it('should maintain consistent pattern for same color across calls', () => {
+      const nodes = [
+        { background_color: '#FF0000' },
+        { background_color: '#FF0000' },
+        { background_color: '#00FF00' }
+      ];
+
+      const colorToPattern = buildColorToPatternMap(nodes);
+
+      // getPatternForColor should always return same pattern for same color
+      const pattern1 = getPatternForColor('#FF0000', colorToPattern);
+      const pattern2 = getPatternForColor('#ff0000', colorToPattern); // lowercase
+      const pattern3 = getPatternForColor('#FF0000', colorToPattern);
+
+      expect(pattern1).toBe(pattern2);
+      expect(pattern1).toBe(pattern3);
+    });
+
+    it('extractColorsFromNodes and buildColorToPatternMap should use same sorting', () => {
+      const nodes = [
+        { background_color: '#FF0000' },
+        { background_color: '#FF0000' },
+        { background_color: '#00FF00' },
+        { background_color: '#0000FF' },
+        { background_color: '#0000FF' },
+        { background_color: '#0000FF' }
+      ];
+
+      const sortedColors = extractColorsFromNodes(nodes);
+      const colorToPattern = buildColorToPatternMap(nodes);
+
+      // The order from extractColorsFromNodes should match the indices in colorToPattern
+      sortedColors.forEach((colorItem, index) => {
+        expect(colorToPattern[colorItem.color]).toBe(index);
+      });
+    });
+
+    it('patterns should be deterministic based on frequency', () => {
+      // Most frequent color gets first pattern, etc.
+      const nodes = [
+        { background_color: '#AAAAAA' }, // 1 occurrence
+        { background_color: '#BBBBBB' }, // 2 occurrences
+        { background_color: '#BBBBBB' },
+        { background_color: '#CCCCCC' }, // 3 occurrences
+        { background_color: '#CCCCCC' },
+        { background_color: '#CCCCCC' }
+      ];
+
+      const colorToPattern = buildColorToPatternMap(nodes);
+
+      // CCCCCC (most frequent) should get index 0 -> stripes
+      // BBBBBB (second) should get index 1 -> dots
+      // AAAAAA (least) should get index 2 -> crosshatch
+      expect(getPatternForColor('#CCCCCC', colorToPattern)).toBe('stripes');
+      expect(getPatternForColor('#BBBBBB', colorToPattern)).toBe('dots');
+      expect(getPatternForColor('#AAAAAA', colorToPattern)).toBe('crosshatch');
     });
   });
 });

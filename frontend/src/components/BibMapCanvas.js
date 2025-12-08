@@ -1,5 +1,6 @@
 import * as d3 from 'd3';
 import { api } from '../services/api.js';
+import { buildColorToPatternMap, getPatternForColor, LEGEND_PATTERNS } from '../utils/legend.js';
 
 export class BibMapCanvas {
   constructor(containerId, options = {}) {
@@ -33,9 +34,96 @@ export class BibMapCanvas {
     this.minNodeWidth = 50;
     this.minNodeHeight = 30;
 
+    // Color to pattern mapping for accessibility
+    this.colorToPatternMap = {};
+
     this.setupZoomAndPan();
     this.setupKeyboardNavigation();
     this.setupCanvasClick();
+    this.ensureSVGPatternDefinitions();
+  }
+
+  /**
+   * Ensure SVG pattern definitions exist for accessibility patterns on nodes
+   */
+  ensureSVGPatternDefinitions() {
+    const defs = this.svg.select('defs');
+
+    // Stripes pattern (45 degree diagonal lines)
+    if (defs.select('#pattern-stripes').empty()) {
+      const stripesPattern = defs.append('pattern')
+        .attr('id', 'pattern-stripes')
+        .attr('patternUnits', 'userSpaceOnUse')
+        .attr('width', '8')
+        .attr('height', '8')
+        .attr('patternTransform', 'rotate(45)');
+      stripesPattern.append('line')
+        .attr('x1', '0').attr('y1', '0')
+        .attr('x2', '0').attr('y2', '8')
+        .attr('stroke', 'rgba(255,255,255,0.25)')
+        .attr('stroke-width', '3');
+    }
+
+    // Dots pattern
+    if (defs.select('#pattern-dots').empty()) {
+      const dotsPattern = defs.append('pattern')
+        .attr('id', 'pattern-dots')
+        .attr('patternUnits', 'userSpaceOnUse')
+        .attr('width', '10')
+        .attr('height', '10');
+      dotsPattern.append('circle')
+        .attr('cx', '5').attr('cy', '5')
+        .attr('r', '2')
+        .attr('fill', 'rgba(255,255,255,0.3)');
+    }
+
+    // Crosshatch pattern
+    if (defs.select('#pattern-crosshatch').empty()) {
+      const crosshatchPattern = defs.append('pattern')
+        .attr('id', 'pattern-crosshatch')
+        .attr('patternUnits', 'userSpaceOnUse')
+        .attr('width', '8')
+        .attr('height', '8');
+      crosshatchPattern.append('line')
+        .attr('x1', '0').attr('y1', '0')
+        .attr('x2', '8').attr('y2', '0')
+        .attr('stroke', 'rgba(255,255,255,0.2)')
+        .attr('stroke-width', '2');
+      crosshatchPattern.append('line')
+        .attr('x1', '0').attr('y1', '0')
+        .attr('x2', '0').attr('y2', '8')
+        .attr('stroke', 'rgba(255,255,255,0.2)')
+        .attr('stroke-width', '2');
+    }
+
+    // Dashes pattern (horizontal lines)
+    if (defs.select('#pattern-dashes').empty()) {
+      const dashesPattern = defs.append('pattern')
+        .attr('id', 'pattern-dashes')
+        .attr('patternUnits', 'userSpaceOnUse')
+        .attr('width', '8')
+        .attr('height', '8');
+      dashesPattern.append('line')
+        .attr('x1', '0').attr('y1', '4')
+        .attr('x2', '8').attr('y2', '4')
+        .attr('stroke', 'rgba(255,255,255,0.25)')
+        .attr('stroke-width', '2');
+    }
+
+    // Waves pattern (-45 degree diagonal lines)
+    if (defs.select('#pattern-waves').empty()) {
+      const wavesPattern = defs.append('pattern')
+        .attr('id', 'pattern-waves')
+        .attr('patternUnits', 'userSpaceOnUse')
+        .attr('width', '8')
+        .attr('height', '8')
+        .attr('patternTransform', 'rotate(-45)');
+      wavesPattern.append('line')
+        .attr('x1', '0').attr('y1', '0')
+        .attr('x2', '0').attr('y2', '8')
+        .attr('stroke', 'rgba(255,255,255,0.25)')
+        .attr('stroke-width', '3');
+    }
   }
 
   setupCanvasClick() {
@@ -787,6 +875,9 @@ export class BibMapCanvas {
   renderNodes() {
     const self = this;
 
+    // Update color-to-pattern mapping for consistent accessibility patterns
+    this.colorToPatternMap = buildColorToPatternMap(this.nodes);
+
     const nodeGroups = this.nodesLayer.selectAll('.node-group')
       .data(this.nodes, d => d.id);
 
@@ -829,6 +920,12 @@ export class BibMapCanvas {
     // Add shape element (will be replaced based on shape type)
     nodeEnter.append('path')
       .attr('class', 'node-shape');
+
+    // Add pattern overlay for accessibility (will be updated based on color)
+    nodeEnter.append('path')
+      .attr('class', 'node-pattern-overlay')
+      .attr('stroke', 'none')
+      .attr('pointer-events', 'none');
 
     // Add foreignObject for text wrapping
     const fo = nodeEnter.append('foreignObject')
@@ -915,6 +1012,16 @@ export class BibMapCanvas {
       .attr('stroke', d => this.getNodeStroke(d))
       .attr('stroke-width', d => this.getNodeStrokeWidth(d))
       .attr('filter', d => this.getNodeFilter(d));
+
+    // Update pattern overlay for accessibility
+    allNodes.select('.node-pattern-overlay')
+      .attr('d', d => this.getShapePath(d))
+      .attr('fill', d => {
+        const style = d.node_style || 'flat';
+        if (style === 'outline') return 'none';
+        const pattern = getPatternForColor(d.background_color, this.colorToPatternMap);
+        return pattern ? `url(#pattern-${pattern})` : 'none';
+      });
 
     // Update foreignObject dimensions
     allNodes.select('.node-label-container')

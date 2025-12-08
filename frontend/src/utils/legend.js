@@ -96,6 +96,34 @@ export function isValidHexColor(color) {
 }
 
 /**
+ * Build a mapping from color to pattern index based on sorted usage frequency.
+ * This ensures consistent pattern assignment across all representations.
+ * @param {Array} nodes - Array of node objects with background_color
+ * @returns {Object} - Map of uppercase color to pattern index
+ */
+export function buildColorToPatternMap(nodes) {
+  const sortedColors = extractColorsFromNodes(nodes);
+  const colorToPattern = {};
+  sortedColors.forEach((item, index) => {
+    colorToPattern[item.color] = index;
+  });
+  return colorToPattern;
+}
+
+/**
+ * Get the pattern name for a given color using a color-to-pattern map
+ * @param {string} bgColor - Background color (any case)
+ * @param {Object} colorToPattern - Map of uppercase color to pattern index
+ * @returns {string|null} - Pattern name or null if color not in map
+ */
+export function getPatternForColor(bgColor, colorToPattern) {
+  const upperColor = (bgColor || '#3B82F6').toUpperCase();
+  const patternIndex = colorToPattern[upperColor];
+  if (patternIndex === undefined) return null;
+  return getPatternForIndex(patternIndex);
+}
+
+/**
  * Parse legend settings from bibmap settings_json
  * @param {string|null} settingsString - JSON string of bibmap settings_json
  * @returns {Object} - Parsed legend settings { showLegend, legendLabels }
