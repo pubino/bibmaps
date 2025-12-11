@@ -305,7 +305,7 @@ if az containerapp show --name "$APP_NAME" --resource-group "$RESOURCE_GROUP" &>
 fi
 
 # Database Configuration (only for new deployments or if not in update mode)
-DATABASE_TYPE="ephemeral"
+DATABASE_TYPE="sqlite"
 SQL_SERVER_NAME=""
 SQL_DB_NAME=""
 SQL_ADMIN_USER=""
@@ -320,10 +320,10 @@ if [ "$UPDATE_MODE" = false ] && [ "$DRY_RUN" = false ]; then
     echo ""
     echo "Choose how to store your data:"
     echo ""
-    echo "  1) Ephemeral SQLite (default)"
-    echo "     - Free, no additional resources"
-    echo "     - Data is lost when container restarts"
-    echo "     - Good for demos and testing"
+    echo "  1) SQLite (default)"
+    echo "     - Low cost"
+    echo "     - Uses Azure Files for data persistence"
+    echo "     - Good for low utilization when file locking isn't a concern"
     echo ""
     echo "  2) Azure SQL Database"
     echo "     - Persistent, managed database"
@@ -375,9 +375,9 @@ if [ "$UPDATE_MODE" = false ] && [ "$DRY_RUN" = false ]; then
             fi
             ;;
         *)
-            DATABASE_TYPE="ephemeral"
+            DATABASE_TYPE="sqlite"
             echo ""
-            echo -e "${YELLOW}Ephemeral SQLite selected. Data will not persist across restarts.${NC}"
+            echo -e "${GREEN}SQLite with Azure Files selected.${NC}"
             ;;
     esac
 fi
@@ -451,7 +451,7 @@ if [ "$DATABASE_TYPE" = "azure-sql" ]; then
     echo "  Database:                $SQL_DB_NAME"
     echo "  Admin User:              $SQL_ADMIN_USER"
 else
-    echo -e "Database:                  ${YELLOW}Ephemeral SQLite (data not persisted)${NC}"
+    echo -e "Database:                  ${YELLOW}SQLite with Azure Files${NC}"
 fi
 if [ "$CONFIGURE_ENTRA" = true ]; then
     if [ -n "$ENTRA_APP_ID" ]; then
@@ -739,7 +739,7 @@ if [ "$DATABASE_TYPE" = "azure-sql" ]; then
 
     echo -e "  ${GREEN}Azure SQL Database configured.${NC}"
 else
-    echo "  Using ephemeral SQLite (data will not persist across restarts)"
+    echo "  Using SQLite with Azure Files for persistence"
 fi
 
 # Create or update Container App
@@ -884,10 +884,9 @@ if [ "$DATABASE_TYPE" = "azure-sql" ]; then
     echo -e "  ${YELLOW}IMPORTANT: Save your database credentials!${NC}"
     echo -e "  ${YELLOW}Password:  $SQL_ADMIN_PASSWORD${NC}"
 else
-    echo -e "${YELLOW}Database:${NC}"
-    echo "  Type: Ephemeral SQLite"
-    echo "  Data will be lost when the container restarts."
-    echo "  To use persistent storage, re-deploy with Azure SQL option."
+    echo -e "${GREEN}Database:${NC}"
+    echo "  Type: SQLite with Azure Files"
+    echo "  Data persists via Azure Files storage."
 fi
 echo ""
 
