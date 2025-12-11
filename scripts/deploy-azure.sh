@@ -31,6 +31,8 @@ DEFAULT_APP_NAME="bibmaps"
 DEFAULT_IMAGE_TAG="latest"
 DEFAULT_SQL_SERVER_SUFFIX="sql"
 DEFAULT_SQL_DB_NAME="bibmapsdb"
+DEFAULT_STORAGE_SUFFIX="storage"
+DEFAULT_SHARE_NAME="bibmapsdata"
 
 # Color output
 RED='\033[0;31m'
@@ -169,7 +171,11 @@ if [ "$DESTROY_MODE" = true ]; then
     echo ""
     echo "This will permanently delete:"
     echo "  - Resource Group: $RESOURCE_GROUP"
-    echo "  - All resources within the group (Container App, ACR, Environment, etc.)"
+    echo "  - All resources within the group:"
+    echo "    * Container App and Environment"
+    echo "    * Container Registry (ACR)"
+    echo "    * Azure SQL Server and Database (if deployed)"
+    echo "    * Azure Storage Account and File Share (if deployed)"
     echo ""
     echo -e "${YELLOW}This action cannot be undone!${NC}"
     echo ""
@@ -205,6 +211,21 @@ if [ "$DESTROY_MODE" = true ]; then
     if [ "$RG_EXISTS" = true ]; then
         echo "Resources in '$RESOURCE_GROUP':"
         az resource list --resource-group "$RESOURCE_GROUP" --query "[].{Name:name, Type:type}" --output table
+
+        # Check for specific database resources and highlight them
+        echo ""
+        SQL_SERVER=$(az sql server list --resource-group "$RESOURCE_GROUP" --query "[0].name" --output tsv 2>/dev/null || echo "")
+        STORAGE_ACCT=$(az storage account list --resource-group "$RESOURCE_GROUP" --query "[0].name" --output tsv 2>/dev/null || echo "")
+
+        if [ -n "$SQL_SERVER" ] && [ "$SQL_SERVER" != "" ]; then
+            echo -e "${YELLOW}Database detected: Azure SQL Server '$SQL_SERVER'${NC}"
+            echo "  All databases on this server will be deleted."
+        fi
+
+        if [ -n "$STORAGE_ACCT" ] && [ "$STORAGE_ACCT" != "" ]; then
+            echo -e "${YELLOW}Storage detected: Storage Account '$STORAGE_ACCT'${NC}"
+            echo "  All file shares and data will be deleted."
+        fi
         echo ""
     fi
 
@@ -311,6 +332,9 @@ SQL_DB_NAME=""
 SQL_ADMIN_USER=""
 SQL_ADMIN_PASSWORD=""
 DATABASE_URL=""
+STORAGE_ACCOUNT_NAME=""
+STORAGE_SHARE_NAME=""
+AZURE_FILES_CONFIGURED=false
 
 if [ "$UPDATE_MODE" = false ] && [ "$DRY_RUN" = false ]; then
     echo ""
@@ -378,6 +402,11 @@ if [ "$UPDATE_MODE" = false ] && [ "$DRY_RUN" = false ]; then
             DATABASE_TYPE="sqlite"
             echo ""
             echo -e "${GREEN}SQLite with Azure Files selected.${NC}"
+
+            # Generate storage account name (must be lowercase, alphanumeric, 3-24 chars)
+            # Remove hyphens and make lowercase
+            STORAGE_ACCOUNT_NAME=$(echo "${APP_NAME}${DEFAULT_STORAGE_SUFFIX}" | tr -d '-' | tr '[:upper:]' '[:lower:]' | cut -c1-24)
+            STORAGE_SHARE_NAME="$DEFAULT_SHARE_NAME"
             ;;
     esac
 fi
@@ -451,7 +480,9 @@ if [ "$DATABASE_TYPE" = "azure-sql" ]; then
     echo "  Database:                $SQL_DB_NAME"
     echo "  Admin User:              $SQL_ADMIN_USER"
 else
-    echo -e "Database:                  ${YELLOW}SQLite with Azure Files${NC}"
+    echo -e "Database:                  ${GREEN}SQLite with Azure Files${NC}"
+    echo "  Storage Account:         $STORAGE_ACCOUNT_NAME"
+    echo "  File Share:              $STORAGE_SHARE_NAME"
 fi
 if [ "$CONFIGURE_ENTRA" = true ]; then
     if [ -n "$ENTRA_APP_ID" ]; then
@@ -567,6 +598,11 @@ REQUIRED_PROVIDERS=(
 # Add SQL provider if Azure SQL is selected
 if [ "$DATABASE_TYPE" = "azure-sql" ]; then
     REQUIRED_PROVIDERS+=("Microsoft.Sql")
+fi
+
+# Add Storage provider if SQLite with Azure Files is selected
+if [ "$DATABASE_TYPE" = "sqlite" ]; then
+    REQUIRED_PROVIDERS+=("Microsoft.Storage")
 fi
 
 for PROVIDER in "${REQUIRED_PROVIDERS[@]}"; do
@@ -739,7 +775,61 @@ if [ "$DATABASE_TYPE" = "azure-sql" ]; then
 
     echo -e "  ${GREEN}Azure SQL Database configured.${NC}"
 else
-    echo "  Using SQLite with Azure Files for persistence"
+    echo "  Setting up SQLite with Azure Files..."
+
+    # Create Storage Account if it doesn't exist
+    if az storage account show --name "$STORAGE_ACCOUNT_NAME" --resource-group "$RESOURCE_GROUP" &>/dev/null 2>&1; then
+        echo "  Storage Account '$STORAGE_ACCOUNT_NAME' already exists."
+    else
+        echo "  Creating Storage Account '$STORAGE_ACCOUNT_NAME'..."
+        az storage account create \
+            --name "$STORAGE_ACCOUNT_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --location "$LOCATION" \
+            --sku Standard_LRS \
+            --kind StorageV2 \
+            --output none
+        echo -e "  ${GREEN}Storage Account created.${NC}"
+    fi
+
+    # Get storage account key
+    STORAGE_ACCOUNT_KEY=$(az storage account keys list \
+        --account-name "$STORAGE_ACCOUNT_NAME" \
+        --resource-group "$RESOURCE_GROUP" \
+        --query "[0].value" \
+        --output tsv)
+
+    # Create File Share if it doesn't exist
+    if az storage share show --name "$STORAGE_SHARE_NAME" --account-name "$STORAGE_ACCOUNT_NAME" --account-key "$STORAGE_ACCOUNT_KEY" &>/dev/null 2>&1; then
+        echo "  File Share '$STORAGE_SHARE_NAME' already exists."
+    else
+        echo "  Creating File Share '$STORAGE_SHARE_NAME'..."
+        az storage share create \
+            --name "$STORAGE_SHARE_NAME" \
+            --account-name "$STORAGE_ACCOUNT_NAME" \
+            --account-key "$STORAGE_ACCOUNT_KEY" \
+            --quota 1 \
+            --output none
+        echo -e "  ${GREEN}File Share created.${NC}"
+    fi
+
+    # Add storage to Container App Environment
+    echo "  Configuring storage mount in Container App Environment..."
+    az containerapp env storage set \
+        --name "$CAE_NAME" \
+        --resource-group "$RESOURCE_GROUP" \
+        --storage-name "bibmapsfiles" \
+        --azure-file-account-name "$STORAGE_ACCOUNT_NAME" \
+        --azure-file-account-key "$STORAGE_ACCOUNT_KEY" \
+        --azure-file-share-name "$STORAGE_SHARE_NAME" \
+        --access-mode ReadWrite \
+        --output none 2>/dev/null || true
+
+    echo -e "  ${GREEN}Azure Files storage configured.${NC}"
+
+    # Set DATABASE_URL for SQLite using Azure Files mount path
+    DATABASE_URL="sqlite:////app/data/bibmap.db"
+    AZURE_FILES_CONFIGURED=true
 fi
 
 # Create or update Container App
@@ -751,11 +841,51 @@ SECRET_KEY=$(openssl rand -hex 32)
 
 if az containerapp show --name "$APP_NAME" --resource-group "$RESOURCE_GROUP" &>/dev/null; then
     echo "  Updating existing Container App '$APP_NAME'..."
-    az containerapp update \
-        --name "$APP_NAME" \
-        --resource-group "$RESOURCE_GROUP" \
-        --image "$IMAGE_NAME" \
-        --output none
+
+    # If Azure Files is configured, update with volume mount
+    if [ "$AZURE_FILES_CONFIGURED" = true ]; then
+        az containerapp update \
+            --name "$APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --image "$IMAGE_NAME" \
+            --set-env-vars "DATABASE_URL=$DATABASE_URL" \
+            --output none
+
+        # Update YAML to add volume mount (az containerapp update doesn't support --volume directly)
+        echo "  Configuring volume mount for Azure Files..."
+        CURRENT_YAML=$(az containerapp show --name "$APP_NAME" --resource-group "$RESOURCE_GROUP" --output yaml)
+
+        # Create a temporary YAML file with the volume configuration
+        cat > /tmp/containerapp-update.yaml << YAMLEOF
+properties:
+  template:
+    volumes:
+      - name: bibmapsdata
+        storageName: bibmapsfiles
+        storageType: AzureFile
+    containers:
+      - name: $APP_NAME
+        image: $IMAGE_NAME
+        volumeMounts:
+          - volumeName: bibmapsdata
+            mountPath: /app/data
+YAMLEOF
+
+        az containerapp update \
+            --name "$APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --yaml /tmp/containerapp-update.yaml \
+            --output none 2>/dev/null || {
+                echo -e "  ${YELLOW}Note: Volume mount may need manual configuration.${NC}"
+            }
+        rm -f /tmp/containerapp-update.yaml
+    else
+        az containerapp update \
+            --name "$APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --image "$IMAGE_NAME" \
+            --output none
+    fi
 else
     echo "  Creating Container App '$APP_NAME'..."
 
@@ -765,22 +895,69 @@ else
         ENV_VARS="$ENV_VARS DATABASE_URL=$DATABASE_URL"
     fi
 
-    az containerapp create \
-        --name "$APP_NAME" \
-        --resource-group "$RESOURCE_GROUP" \
-        --environment "$CAE_NAME" \
-        --image "$IMAGE_NAME" \
-        --target-port 8000 \
-        --ingress external \
-        --registry-server "$ACR_LOGIN_SERVER" \
-        --registry-username "$ACR_USERNAME" \
-        --registry-password "$ACR_PASSWORD" \
-        --cpu 0.5 \
-        --memory 1Gi \
-        --min-replicas 0 \
-        --max-replicas 3 \
-        --env-vars $ENV_VARS \
-        --output none
+    # Create Container App - first without volume, then update with YAML for volume mount
+    if [ "$AZURE_FILES_CONFIGURED" = true ]; then
+        # Create with basic config first
+        az containerapp create \
+            --name "$APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --environment "$CAE_NAME" \
+            --image "$IMAGE_NAME" \
+            --target-port 8000 \
+            --ingress external \
+            --registry-server "$ACR_LOGIN_SERVER" \
+            --registry-username "$ACR_USERNAME" \
+            --registry-password "$ACR_PASSWORD" \
+            --cpu 0.5 \
+            --memory 1Gi \
+            --min-replicas 0 \
+            --max-replicas 3 \
+            --env-vars $ENV_VARS \
+            --output none
+
+        # Now update with volume mount using YAML
+        echo "  Configuring volume mount for Azure Files..."
+        cat > /tmp/containerapp-update.yaml << YAMLEOF
+properties:
+  template:
+    volumes:
+      - name: bibmapsdata
+        storageName: bibmapsfiles
+        storageType: AzureFile
+    containers:
+      - name: $APP_NAME
+        image: $IMAGE_NAME
+        volumeMounts:
+          - volumeName: bibmapsdata
+            mountPath: /app/data
+YAMLEOF
+
+        az containerapp update \
+            --name "$APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --yaml /tmp/containerapp-update.yaml \
+            --output none 2>/dev/null || {
+                echo -e "  ${YELLOW}Note: Volume mount may need manual configuration.${NC}"
+            }
+        rm -f /tmp/containerapp-update.yaml
+    else
+        az containerapp create \
+            --name "$APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --environment "$CAE_NAME" \
+            --image "$IMAGE_NAME" \
+            --target-port 8000 \
+            --ingress external \
+            --registry-server "$ACR_LOGIN_SERVER" \
+            --registry-username "$ACR_USERNAME" \
+            --registry-password "$ACR_PASSWORD" \
+            --cpu 0.5 \
+            --memory 1Gi \
+            --min-replicas 0 \
+            --max-replicas 3 \
+            --env-vars $ENV_VARS \
+            --output none
+    fi
 fi
 
 # Get the app URL
@@ -885,8 +1062,13 @@ if [ "$DATABASE_TYPE" = "azure-sql" ]; then
     echo -e "  ${YELLOW}Password:  $SQL_ADMIN_PASSWORD${NC}"
 else
     echo -e "${GREEN}Database:${NC}"
-    echo "  Type: SQLite with Azure Files"
-    echo "  Data persists via Azure Files storage."
+    echo "  Type:           SQLite with Azure Files"
+    echo "  Storage Acct:   $STORAGE_ACCOUNT_NAME"
+    echo "  File Share:     $STORAGE_SHARE_NAME"
+    echo "  Mount Path:     /app/data"
+    echo "  Database File:  /app/data/bibmap.db"
+    echo ""
+    echo "  Data persists across container restarts via Azure Files storage."
 fi
 echo ""
 
