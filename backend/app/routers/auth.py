@@ -12,7 +12,7 @@ from sqlalchemy import or_
 import httpx
 
 from ..database import get_db
-from ..models.models import User, UserRole
+from ..models.models import User, UserRole, AllowedEmail
 from .. import schemas
 from ..auth import (
     verify_password,
@@ -23,6 +23,7 @@ from ..auth import (
     get_current_active_user,
     get_current_admin_user,
     ACCESS_TOKEN_EXPIRE_MINUTES,
+    is_email_allowed,
 )
 from ..rate_limiting import rate_limit, AUTH_RATE_LIMIT, PASSWORD_RATE_LIMIT
 
@@ -37,6 +38,34 @@ oauth_states: dict = {}
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
+@router.get("/registration-enabled")
+def registration_enabled():
+    """Check if self-registration is enabled (always disabled - use OAuth or admin creation)."""
+    return {"enabled": False}
+
+
+@router.get("/auth-methods")
+def get_auth_methods(request: Request):
+    """Get available authentication methods.
+
+    Returns info about what auth methods are available:
+    - azure_easy_auth: True if running behind Azure Container Apps with Easy Auth
+    - local_login: True if username/password login is available
+    - google_oauth: True if Google OAuth is configured
+    """
+    # Check if Azure Easy Auth is enabled via environment variable
+    # This is set by the deployment script when Easy Auth is configured
+    azure_easy_auth = os.getenv("AZURE_EASY_AUTH_ENABLED", "").lower() == "true"
+
+    return {
+        "azure_easy_auth": azure_easy_auth,
+        "azure_login_url": "/.auth/login/aad?post_login_redirect_uri=/",
+        "local_login": True,  # Always available as fallback for admin-created users
+        "google_oauth": bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET),
+        "registration_enabled": False
+    }
+
+
 @router.post("/register", response_model=schemas.UserResponse, status_code=201)
 @rate_limit(AUTH_RATE_LIMIT)
 def register(
@@ -44,39 +73,16 @@ def register(
     user_data: schemas.UserCreate,
     db: Session = Depends(get_db)
 ):
-    """Register a new user account."""
-    # Check if email already exists
-    if db.query(User).filter(User.email == user_data.email).first():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
-        )
+    """Register a new user account.
 
-    # Check if username already exists
-    if db.query(User).filter(User.username == user_data.username).first():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username already taken"
-        )
-
-    # Check if this is the first user (make them admin)
-    is_first_user = db.query(User).count() == 0
-
-    # Create new user
-    user = User(
-        email=user_data.email,
-        username=user_data.username,
-        display_name=user_data.display_name or user_data.username,
-        password_hash=get_password_hash(user_data.password),
-        role=UserRole.ADMIN if is_first_user else UserRole.USER,
-        is_active=True
+    Note: Self-registration is disabled. Users must sign in via Azure OAuth
+    or be created by an admin.
+    """
+    # Self-registration is disabled
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Self-registration is disabled. Please sign in with your Microsoft account or contact an administrator."
     )
-
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-
-    return user
 
 
 @router.post("/login", response_model=schemas.Token)
@@ -602,3 +608,78 @@ async def google_callback(
     except Exception as e:
         print(f"Google OAuth error: {e}")
         return RedirectResponse(url=f"/?error=oauth_error")
+
+
+# Allowed Email Management (Admin only)
+@router.get("/allowed-emails", response_model=List[schemas.AllowedEmailResponse])
+def list_allowed_emails(
+    admin: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """List all allowed email patterns (admin only)."""
+    return db.query(AllowedEmail).order_by(AllowedEmail.email_pattern).all()
+
+
+@router.post("/allowed-emails", response_model=schemas.AllowedEmailResponse, status_code=201)
+def add_allowed_email(
+    email_data: schemas.AllowedEmailCreate,
+    admin: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Add an allowed email pattern (admin only).
+
+    Patterns can be:
+    - Exact email: user@example.com
+    - Domain wildcard: *@example.com (allows all emails from that domain)
+    """
+    # Check if pattern already exists
+    existing = db.query(AllowedEmail).filter(
+        AllowedEmail.email_pattern == email_data.email_pattern.lower()
+    ).first()
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This email pattern already exists"
+        )
+
+    allowed_email = AllowedEmail(
+        email_pattern=email_data.email_pattern.lower(),
+        description=email_data.description,
+        created_by_id=admin.id
+    )
+    db.add(allowed_email)
+    db.commit()
+    db.refresh(allowed_email)
+    return allowed_email
+
+
+@router.delete("/allowed-emails/{email_id}", status_code=204)
+def delete_allowed_email(
+    email_id: int,
+    admin: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Delete an allowed email pattern (admin only)."""
+    allowed_email = db.query(AllowedEmail).filter(AllowedEmail.id == email_id).first()
+    if not allowed_email:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Allowed email not found"
+        )
+
+    db.delete(allowed_email)
+    db.commit()
+    return None
+
+
+@router.get("/allowed-emails/check")
+def check_email_allowed(
+    email: str,
+    admin: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Check if an email would be allowed (admin only, for testing)."""
+    return {
+        "email": email,
+        "allowed": is_email_allowed(db, email)
+    }
