@@ -269,7 +269,7 @@ class BibMapUpdate(BaseModel):
 
 class BibMap(BibMapBase):
     id: int
-    user_id: Optional[str] = None
+    user_id: Optional[int] = None
     is_published: bool = False
     settings_json: Optional[str] = None
     created_at: datetime
@@ -283,7 +283,7 @@ class BibMap(BibMapBase):
 
 class BibMapSummary(BibMapBase):
     id: int
-    user_id: Optional[str] = None
+    user_id: Optional[int] = None
     is_published: bool = False
     settings_json: Optional[str] = None
     created_at: datetime
@@ -337,7 +337,7 @@ class ReferenceUpdate(BaseModel):
 
 class Reference(ReferenceBase):
     id: int
-    user_id: Optional[str] = None
+    user_id: Optional[int] = None
     created_at: datetime
     updated_at: datetime
     taxonomies: List[Taxonomy] = []

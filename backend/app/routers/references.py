@@ -5,7 +5,7 @@ from ..database import get_db
 from ..models.models import Reference, Taxonomy, User, UserRole
 from .. import schemas
 from ..services.bibtex_parser import parse_bibtex
-from ..auth import get_current_user, check_ownership
+from ..auth import get_current_user, get_current_user_for_write, check_ownership
 
 router = APIRouter(prefix="/api/references", tags=["references"])
 
@@ -37,9 +37,9 @@ def list_references(
 
 
 @router.post("/", response_model=schemas.Reference, status_code=201)
-def create_reference(
+async def create_reference(
     reference: schemas.ReferenceCreate,
-    user: Optional[User] = Depends(get_current_user),
+    user: Optional[User] = Depends(get_current_user_for_write),
     db: Session = Depends(get_db)
 ):
     """Create a new reference."""
@@ -81,9 +81,9 @@ def create_reference(
 
 
 @router.post("/import", response_model=schemas.BibTeXImportResult)
-def import_bibtex(
+async def import_bibtex(
     bibtex_import: schemas.BibTeXImport,
-    user: Optional[User] = Depends(get_current_user),
+    user: Optional[User] = Depends(get_current_user_for_write),
     db: Session = Depends(get_db)
 ):
     """Import references from BibTeX content."""
@@ -161,10 +161,10 @@ def get_reference(
 
 
 @router.put("/{reference_id}", response_model=schemas.Reference)
-def update_reference(
+async def update_reference(
     reference_id: int,
     reference_update: schemas.ReferenceUpdate,
-    user: Optional[User] = Depends(get_current_user),
+    user: Optional[User] = Depends(get_current_user_for_write),
     db: Session = Depends(get_db)
 ):
     """Update a reference."""
@@ -196,10 +196,10 @@ def update_reference(
 
 
 @router.put("/{reference_id}/bibtex", response_model=schemas.Reference)
-def update_reference_from_bibtex(
+async def update_reference_from_bibtex(
     reference_id: int,
     bibtex_update: schemas.BibTeXUpdate,
-    user: Optional[User] = Depends(get_current_user),
+    user: Optional[User] = Depends(get_current_user_for_write),
     db: Session = Depends(get_db)
 ):
     """Update a reference by parsing new BibTeX content."""
@@ -245,9 +245,9 @@ def update_reference_from_bibtex(
 
 
 @router.delete("/{reference_id}", status_code=204)
-def delete_reference(
+async def delete_reference(
     reference_id: int,
-    user: Optional[User] = Depends(get_current_user),
+    user: Optional[User] = Depends(get_current_user_for_write),
     db: Session = Depends(get_db)
 ):
     """Delete a reference."""

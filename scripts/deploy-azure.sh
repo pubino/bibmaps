@@ -445,11 +445,11 @@ if [ "$DRY_RUN" = true ]; then
         else
             echo "  [7/8] Entra ID - WOULD CREATE new App Registration 'BibMaps'"
         fi
+        echo "  [8/8] Production environment - WOULD SET AZURE_EASY_AUTH_ENABLED=true"
     else
         echo "  [7/8] Entra ID - Skipped (not configured)"
+        echo "  [8/8] Production environment - Skipped (Entra ID not configured)"
     fi
-
-    echo "  [8/8] Display deployment summary and app URL"
 
     echo ""
     echo -e "${YELLOW}To perform these actions, run without --dry-run${NC}"
@@ -687,6 +687,22 @@ if [ "$CONFIGURE_ENTRA" = true ]; then
 else
     echo "  Skipped (Entra ID not configured)"
     ENTRA_CONFIGURED=false
+fi
+
+# Set AZURE_EASY_AUTH_ENABLED environment variable based on Entra ID configuration
+echo ""
+echo "[8/8] Configuring production environment..."
+if [ "$ENTRA_CONFIGURED" = true ]; then
+    echo "  Setting AZURE_EASY_AUTH_ENABLED=true for production security..."
+    az containerapp update \
+        --name "$APP_NAME" \
+        --resource-group "$RESOURCE_GROUP" \
+        --set-env-vars "AZURE_EASY_AUTH_ENABLED=true" \
+        --output none
+    echo -e "  ${GREEN}Production security enabled - authentication required for content creation.${NC}"
+else
+    echo "  AZURE_EASY_AUTH_ENABLED not set (Entra ID not configured)"
+    echo "  Anonymous content creation will be allowed."
 fi
 
 echo ""

@@ -4,7 +4,7 @@ from typing import Optional
 from ..database import get_db
 from ..models.models import BibMap, Node, Connection, User
 from .. import schemas
-from ..auth import get_current_user, check_ownership
+from ..auth import get_current_user, get_current_user_for_write, check_ownership
 
 router = APIRouter(prefix="/api/connections", tags=["connections"])
 
@@ -20,9 +20,9 @@ def verify_bibmap_access(bibmap_id: int, user: Optional[User], db: Session) -> B
 
 
 @router.post("/", response_model=schemas.Connection, status_code=201)
-def create_connection(
+async def create_connection(
     connection: schemas.ConnectionCreate,
-    user: Optional[User] = Depends(get_current_user),
+    user: Optional[User] = Depends(get_current_user_for_write),
     db: Session = Depends(get_db)
 ):
     """Create a new connection between two nodes."""
@@ -85,10 +85,10 @@ def get_connection(
 
 
 @router.put("/{connection_id}", response_model=schemas.Connection)
-def update_connection(
+async def update_connection(
     connection_id: int,
     connection_update: schemas.ConnectionUpdate,
-    user: Optional[User] = Depends(get_current_user),
+    user: Optional[User] = Depends(get_current_user_for_write),
     db: Session = Depends(get_db)
 ):
     """Update a connection."""
@@ -125,9 +125,9 @@ def update_connection(
 
 
 @router.delete("/{connection_id}", status_code=204)
-def delete_connection(
+async def delete_connection(
     connection_id: int,
-    user: Optional[User] = Depends(get_current_user),
+    user: Optional[User] = Depends(get_current_user_for_write),
     db: Session = Depends(get_db)
 ):
     """Delete a connection."""

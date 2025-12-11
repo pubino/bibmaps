@@ -4,7 +4,7 @@ from typing import List, Optional
 from ..database import get_db
 from ..models.models import Media, Taxonomy, User, UserRole
 from .. import schemas
-from ..auth import get_current_user, check_ownership
+from ..auth import get_current_user, get_current_user_for_write, check_ownership
 
 router = APIRouter(prefix="/api/media", tags=["media"])
 
@@ -36,9 +36,9 @@ def list_media(
 
 
 @router.post("/", response_model=schemas.Media, status_code=201)
-def create_media(
+async def create_media(
     media: schemas.MediaCreate,
-    user: Optional[User] = Depends(get_current_user),
+    user: Optional[User] = Depends(get_current_user_for_write),
     db: Session = Depends(get_db)
 ):
     """Create a new media entry."""
@@ -77,10 +77,10 @@ def get_media(
 
 
 @router.put("/{media_id}", response_model=schemas.Media)
-def update_media(
+async def update_media(
     media_id: int,
     media_update: schemas.MediaUpdate,
-    user: Optional[User] = Depends(get_current_user),
+    user: Optional[User] = Depends(get_current_user_for_write),
     db: Session = Depends(get_db)
 ):
     """Update a media entry."""
@@ -112,9 +112,9 @@ def update_media(
 
 
 @router.delete("/{media_id}", status_code=204)
-def delete_media(
+async def delete_media(
     media_id: int,
-    user: Optional[User] = Depends(get_current_user),
+    user: Optional[User] = Depends(get_current_user_for_write),
     db: Session = Depends(get_db)
 ):
     """Delete a media entry."""

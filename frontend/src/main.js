@@ -224,13 +224,18 @@ function updateAuthUI() {
   const adminNav = document.getElementById('nav-admin');
   const settingsNav = document.getElementById('nav-settings');
 
+  // In production mode, profile is always hidden
+  const showProfile = authMethods.profile_enabled !== false;
+
   if (currentUser) {
     userInfo.textContent = `Signed in as ${currentUser.user_name || currentUser.username || 'User'}`;
     authToggleBtn.textContent = 'Sign Out';
     authToggleBtn.classList.remove('btn-secondary');
     authToggleBtn.classList.add('btn-primary');
-    profileBtn.hidden = false;
-    settingsNav.hidden = false;
+    // Only show profile button if profile is enabled (not in production mode)
+    profileBtn.hidden = !showProfile;
+    // Settings is tied to profile - hide in production mode
+    settingsNav.hidden = !showProfile;
 
     // Show admin nav if user is admin
     adminNav.hidden = !currentUser.is_admin;
@@ -257,7 +262,9 @@ let authMethods = {
   azure_login_url: '/.auth/login/aad?post_login_redirect_uri=/',
   local_login: true,
   google_oauth: false,
-  registration_enabled: false
+  registration_enabled: false,
+  production_mode: false,
+  profile_enabled: true
 };
 
 // Check available auth methods

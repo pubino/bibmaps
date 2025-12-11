@@ -4,7 +4,7 @@ from typing import List, Optional
 from ..database import get_db
 from ..models.models import BibMap, Node, Connection, Taxonomy, User, UserRole
 from .. import schemas
-from ..auth import get_current_user, check_ownership
+from ..auth import get_current_user, get_current_user_for_write, check_ownership
 
 router = APIRouter(prefix="/api/bibmaps", tags=["bibmaps"])
 
@@ -30,9 +30,9 @@ def list_bibmaps(
 
 
 @router.post("/", response_model=schemas.BibMap, status_code=201)
-def create_bibmap(
+async def create_bibmap(
     bibmap: schemas.BibMapCreate,
-    user: Optional[User] = Depends(get_current_user),
+    user: Optional[User] = Depends(get_current_user_for_write),
     db: Session = Depends(get_db)
 ):
     """Create a new bib map."""
@@ -63,10 +63,10 @@ def get_bibmap(
 
 
 @router.put("/{bibmap_id}", response_model=schemas.BibMap)
-def update_bibmap(
+async def update_bibmap(
     bibmap_id: int,
     bibmap_update: schemas.BibMapUpdate,
-    user: Optional[User] = Depends(get_current_user),
+    user: Optional[User] = Depends(get_current_user_for_write),
     db: Session = Depends(get_db)
 ):
     """Update a bib map."""
@@ -86,9 +86,9 @@ def update_bibmap(
 
 
 @router.delete("/{bibmap_id}", status_code=204)
-def delete_bibmap(
+async def delete_bibmap(
     bibmap_id: int,
-    user: Optional[User] = Depends(get_current_user),
+    user: Optional[User] = Depends(get_current_user_for_write),
     db: Session = Depends(get_db)
 ):
     """Delete a bib map and all its nodes and connections."""
@@ -104,9 +104,9 @@ def delete_bibmap(
 
 
 @router.put("/{bibmap_id}/publish", response_model=schemas.BibMap)
-def publish_bibmap(
+async def publish_bibmap(
     bibmap_id: int,
-    user: Optional[User] = Depends(get_current_user),
+    user: Optional[User] = Depends(get_current_user_for_write),
     db: Session = Depends(get_db)
 ):
     """Publish a bib map to make it publicly accessible."""
@@ -123,9 +123,9 @@ def publish_bibmap(
 
 
 @router.put("/{bibmap_id}/unpublish", response_model=schemas.BibMap)
-def unpublish_bibmap(
+async def unpublish_bibmap(
     bibmap_id: int,
-    user: Optional[User] = Depends(get_current_user),
+    user: Optional[User] = Depends(get_current_user_for_write),
     db: Session = Depends(get_db)
 ):
     """Unpublish a bib map to make it private."""

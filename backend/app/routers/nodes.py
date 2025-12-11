@@ -4,7 +4,7 @@ from typing import List, Optional
 from ..database import get_db
 from ..models.models import BibMap, Node, Taxonomy, User, UserRole
 from .. import schemas
-from ..auth import get_current_user, check_ownership
+from ..auth import get_current_user, get_current_user_for_write, check_ownership
 
 router = APIRouter(prefix="/api/nodes", tags=["nodes"])
 
@@ -20,9 +20,9 @@ def verify_bibmap_access(bibmap_id: int, user: Optional[User], db: Session) -> B
 
 
 @router.post("/", response_model=schemas.Node, status_code=201)
-def create_node(
+async def create_node(
     node: schemas.NodeCreate,
-    user: Optional[User] = Depends(get_current_user),
+    user: Optional[User] = Depends(get_current_user_for_write),
     db: Session = Depends(get_db)
 ):
     """Create a new node in a bib map."""
@@ -75,10 +75,10 @@ def get_node(
 
 
 @router.put("/{node_id}", response_model=schemas.Node)
-def update_node(
+async def update_node(
     node_id: int,
     node_update: schemas.NodeUpdate,
-    user: Optional[User] = Depends(get_current_user),
+    user: Optional[User] = Depends(get_current_user_for_write),
     db: Session = Depends(get_db)
 ):
     """Update a node."""
@@ -105,9 +105,9 @@ def update_node(
 
 
 @router.delete("/{node_id}", status_code=204)
-def delete_node(
+async def delete_node(
     node_id: int,
-    user: Optional[User] = Depends(get_current_user),
+    user: Optional[User] = Depends(get_current_user_for_write),
     db: Session = Depends(get_db)
 ):
     """Delete a node and its connections."""
@@ -122,11 +122,11 @@ def delete_node(
 
 
 @router.put("/{node_id}/position", response_model=schemas.Node)
-def update_node_position(
+async def update_node_position(
     node_id: int,
     x: float,
     y: float,
-    user: Optional[User] = Depends(get_current_user),
+    user: Optional[User] = Depends(get_current_user_for_write),
     db: Session = Depends(get_db)
 ):
     """Update just the position of a node (for drag operations)."""
@@ -143,11 +143,11 @@ def update_node_position(
 
 
 @router.put("/{node_id}/size", response_model=schemas.Node)
-def update_node_size(
+async def update_node_size(
     node_id: int,
     width: float,
     height: float,
-    user: Optional[User] = Depends(get_current_user),
+    user: Optional[User] = Depends(get_current_user_for_write),
     db: Session = Depends(get_db)
 ):
     """Update just the size of a node (for resize operations)."""

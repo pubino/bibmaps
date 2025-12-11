@@ -1,37 +1,43 @@
 # BibMap - Task Notes
 
-## Project Status: HTML EXPORT FEATURE COMPLETE ✓
-All PRIMARY GOAL items verified complete - 2025-12-08:
-- Backend: 171 tests passing
-- Frontend: 277 tests passing (96 tests for HTML export)
-- CI test suite integration confirmed working
+## Project Status: PRODUCTION SECURITY REFACTOR COMPLETE ✓
+All PRIMARY GOAL items implemented and verified - 2025-12-11:
+- Backend: 171 tests passing (verified)
+- Frontend: 299 tests passing (verified)
 
-## HTML Export Feature Implementation
+## Production Security Features Implemented
 
-### What was implemented:
-1. **Export HTML button** - Added next to Copy Link button in editor toolbar
-2. **Self-contained HTML export** - ZIP file containing:
-   - `index.html` - Main BibMap canvas view with D3.js rendering
-   - `styles.css` - Complete styling for offline viewing
-   - `app.js` - Canvas rendering, zoom/pan, node interaction
-   - `references/{nodeId}.html` - Reference list pages for nodes with `link_to_references`
-   - `references/{bibtexKey}.html` - Individual reference detail pages
-3. **Relative links** - All links use relative paths for portable re-hosting
-4. **Legend support** - Exports legend if enabled in BibMap settings
-5. **Full visual fidelity** - Node styles (flat/bevel/emboss/outline), shapes, connections preserved
+### Goal 1: Authentication Required for Content Creation
+- Added `get_current_user_for_write` dependency in `backend/app/auth.py:342-358`
+- When `AZURE_EASY_AUTH_ENABLED=true`, all write operations require authentication
+- Affected routers: bibmaps, references, media, taxonomies, nodes, connections
+- Returns 401 if anonymous user attempts to create/modify content in production
 
-### Key files:
-- `frontend/src/services/htmlExport.js` - HTML/CSS/JS generation module
-- `frontend/src/services/htmlExport.test.js` - 96 comprehensive tests
-- `frontend/index.html:91-93` - Export HTML button
-- `frontend/src/main.js:1242-1313` - `exportBibMapAsHtml()` function
-- `frontend/src/main.js:2619-2623` - Button event listener
+### Goal 2: Profile Button Hidden in Production
+- Added `profile_enabled` flag to auth-methods endpoint (`backend/app/routers/auth.py:72`)
+- Frontend respects `authMethods.profile_enabled` in `updateAuthUI()` (`frontend/src/main.js:228`)
+- Profile and Settings navigation hidden when in production mode
 
-### Usage:
-1. Open a BibMap in the editor
-2. Click the package icon (📦) next to Copy Link
-3. Downloads `{bibmap_title}_html_export.zip`
-4. Extract and open `index.html` in any browser
+### Goal 3: Azure SQL Support with Migrations
+- Updated `backend/app/database.py` to support MSSQL connection strings
+- Added `alembic` and `pyodbc` packages to requirements.txt
+- Created Alembic migration framework in `backend/alembic/`
+- Initial migration: `backend/alembic/versions/20241211_0001_initial_schema.py`
+- Added `drop_db()` function for teardown support
+
+### Goal 4: Microsoft-Only Sign-In in Production
+- Implemented via auth-methods logic
+- When `AZURE_EASY_AUTH_ENABLED=true`:
+  - `local_login: false` - hides username/password form
+  - `google_oauth: false` - hides Google OAuth button
+  - `azure_easy_auth: true` - shows Microsoft sign-in button only
+
+### Goal 5: Deployment Script Handles Setup and Teardown
+- `scripts/deploy-azure.sh` - main deployment script
+- `--destroy` flag for teardown (deletes resource group and optionally Entra ID app)
+- `--update` flag for updating existing deployment
+- `--dry-run` flag to preview changes
+- Step 8 sets `AZURE_EASY_AUTH_ENABLED=true` when Entra ID is configured
 
 ## Quick Commands
 ```bash
@@ -40,12 +46,35 @@ docker-compose -f docker-compose.test.yml run --rm backend-test
 
 # Run frontend tests
 cd frontend && npm run test:run
+
+# Deploy to Azure (interactive)
+./scripts/deploy-azure.sh
+
+# Update existing deployment
+./scripts/deploy-azure.sh --update
+
+# Teardown Azure resources
+./scripts/deploy-azure.sh --destroy
+
+# Run Alembic migrations (for Azure SQL)
+cd backend && alembic upgrade head
+
+# Rollback migrations (teardown)
+cd backend && alembic downgrade base
+```
+
+## Environment Variables for Production
+```bash
+# Enable production mode (triggers all security features)
+AZURE_EASY_AUTH_ENABLED=true
+
+# Azure SQL connection string format
+DATABASE_URL=mssql+pyodbc://user:password@server/database?driver=ODBC+Driver+18+for+SQL+Server
 ```
 
 ## Architecture Notes
-- SQLite database at `data/bibmap.db`
+- SQLite database at `data/bibmap.db` (local dev)
+- Azure SQL supported via pyodbc driver (production)
 - Frontend: Vite + Vanilla JS, served via nginx
 - Backend: FastAPI + SQLAlchemy
-- Legend labels stored in `bibmap.settings_json` JSON field
-- Node-to-reference linking computed at runtime via shared tags
-- Default node color (#3B82F6) excluded from legend matching
+- Production mode controlled by `AZURE_EASY_AUTH_ENABLED` env var

@@ -52,6 +52,8 @@ def get_auth_methods(request: Request):
     - azure_easy_auth: True if running behind Azure Container Apps with Easy Auth
     - local_login: True if username/password login is available (disabled in Azure mode)
     - google_oauth: True if Google OAuth is configured
+    - production_mode: True if in production mode (profile features disabled)
+    - profile_enabled: False in production to hide profile UI
     """
     # Check if Azure Easy Auth is enabled via environment variable
     # This is set by the deployment script when Easy Auth is configured
@@ -65,7 +67,9 @@ def get_auth_methods(request: Request):
         "azure_login_url": "/.auth/login/aad?post_login_redirect_uri=/",
         "local_login": local_login,
         "google_oauth": bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET) and not azure_easy_auth,
-        "registration_enabled": False
+        "registration_enabled": False,
+        "production_mode": azure_easy_auth,  # True when in production/Azure mode
+        "profile_enabled": not azure_easy_auth  # Profile features only in dev mode
     }
 
 

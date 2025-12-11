@@ -332,3 +332,27 @@ def check_ownership(user: Optional[User], owner_id: Optional[int], allow_anonymo
             return True
 
     return False
+
+
+def is_production_mode() -> bool:
+    """Check if running in production mode (Azure Easy Auth enabled)."""
+    return os.getenv("AZURE_EASY_AUTH_ENABLED", "").lower() == "true"
+
+
+async def get_current_user_for_write(
+    user: Optional[User] = Depends(get_current_user)
+) -> Optional[User]:
+    """
+    Get the current user for write operations.
+
+    In production mode (AZURE_EASY_AUTH_ENABLED=true), authentication is required.
+    In local/development mode, anonymous access is allowed (returns None).
+    """
+    if is_production_mode():
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required to create or modify content",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+    return user

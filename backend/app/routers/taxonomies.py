@@ -5,7 +5,7 @@ from typing import List, Optional
 from ..database import get_db
 from ..models.models import Taxonomy, Reference, Node, User, UserRole, BibMap
 from .. import schemas
-from ..auth import get_current_user, check_ownership
+from ..auth import get_current_user, get_current_user_for_write, check_ownership
 
 router = APIRouter(prefix="/api/taxonomies", tags=["taxonomies"])
 
@@ -44,9 +44,9 @@ def list_taxonomies(
 
 
 @router.post("/", response_model=schemas.Taxonomy, status_code=201)
-def create_taxonomy(
+async def create_taxonomy(
     taxonomy: schemas.TaxonomyCreate,
-    user: Optional[User] = Depends(get_current_user),
+    user: Optional[User] = Depends(get_current_user_for_write),
     db: Session = Depends(get_db)
 ):
     """Create a new taxonomy/tag."""
@@ -104,10 +104,10 @@ def get_taxonomy(
 
 
 @router.put("/{taxonomy_id}", response_model=schemas.Taxonomy)
-def update_taxonomy(
+async def update_taxonomy(
     taxonomy_id: int,
     taxonomy_update: schemas.TaxonomyUpdate,
-    user: Optional[User] = Depends(get_current_user),
+    user: Optional[User] = Depends(get_current_user_for_write),
     db: Session = Depends(get_db)
 ):
     """Update a taxonomy."""
@@ -150,9 +150,9 @@ def update_taxonomy(
 
 
 @router.delete("/{taxonomy_id}", status_code=204)
-def delete_taxonomy(
+async def delete_taxonomy(
     taxonomy_id: int,
-    user: Optional[User] = Depends(get_current_user),
+    user: Optional[User] = Depends(get_current_user_for_write),
     db: Session = Depends(get_db)
 ):
     """Delete a taxonomy."""
