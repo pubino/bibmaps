@@ -38,3 +38,5 @@ __pycache__/
 .Python
 venv/
 .venv/
+data/bibmap.db
+*.db
