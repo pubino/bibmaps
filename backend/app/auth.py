@@ -155,104 +155,109 @@ async def get_current_user(
 
     Returns None if not authenticated (for local mode).
     """
-    # First try JWT token authentication
-    actual_token = get_token_from_request(request, authorization, token)
-    if actual_token:
-        token_data = decode_token(actual_token)
-        if token_data and token_data.user_id:
-            user = db.query(User).filter(User.id == token_data.user_id).first()
-            if user and user.is_active:
-                return user
+    try:
+        # First try JWT token authentication
+        actual_token = get_token_from_request(request, authorization, token)
+        if actual_token:
+            token_data = decode_token(actual_token)
+            if token_data and token_data.user_id:
+                user = db.query(User).filter(User.id == token_data.user_id).first()
+                if user and user.is_active:
+                    return user
 
-    # Try Azure Easy Auth
-    if x_ms_client_principal_id:
-        # Look up existing user by Azure OAuth ID
-        user = db.query(User).filter(
-            User.oauth_provider == "azure",
-            User.oauth_id == x_ms_client_principal_id
-        ).first()
+        # Try Azure Easy Auth
+        if x_ms_client_principal_id:
+            # Look up existing user by Azure OAuth ID
+            user = db.query(User).filter(
+                User.oauth_provider == "azure",
+                User.oauth_id == x_ms_client_principal_id
+            ).first()
 
-        if user:
-            if user.is_active:
-                # Update last login
-                user.last_login = datetime.utcnow()
+            if user:
+                if user.is_active:
+                    # Update last login
+                    user.last_login = datetime.utcnow()
+                    db.commit()
+                    return user
+                else:
+                    return None  # User is deactivated
+
+            # User doesn't exist yet - try to auto-create from Azure headers
+            # Parse the X-MS-CLIENT-PRINCIPAL header to get email
+            email = None
+            display_name = x_ms_client_principal_name
+
+            if x_ms_client_principal:
+                try:
+                    # The header is base64 encoded JSON
+                    principal_data = json.loads(base64.b64decode(x_ms_client_principal))
+                    claims = principal_data.get("claims", [])
+                    for claim in claims:
+                        claim_type = claim.get("typ", "")
+                        if claim_type in ["http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress",
+                                          "emails", "email", "preferred_username"]:
+                            email = claim.get("val")
+                            break
+                        if claim_type == "name" and not display_name:
+                            display_name = claim.get("val")
+                except (ValueError, KeyError, json.JSONDecodeError, Exception):
+                    pass
+
+            # If we couldn't get email from claims, try using the principal name
+            if not email and x_ms_client_principal_name and "@" in x_ms_client_principal_name:
+                email = x_ms_client_principal_name
+
+            if not email:
+                # Can't create user without email
+                return None
+
+            # Check if email is allowed
+            if not is_email_allowed(db, email):
+                return None  # Email not in allowlist
+
+            # Check if this is the first user (make them admin)
+            is_first_user = db.query(User).count() == 0
+
+            # Generate a unique username from email
+            base_username = email.split("@")[0]
+            username = base_username
+            counter = 1
+            while db.query(User).filter(User.username == username).first():
+                username = f"{base_username}{counter}"
+                counter += 1
+
+            # Check if a user with this email already exists (link accounts)
+            existing_user = db.query(User).filter(User.email == email).first()
+            if existing_user:
+                # Link existing account to Azure
+                existing_user.oauth_provider = "azure"
+                existing_user.oauth_id = x_ms_client_principal_id
+                existing_user.last_login = datetime.utcnow()
                 db.commit()
-                return user
-            else:
-                return None  # User is deactivated
+                return existing_user if existing_user.is_active else None
 
-        # User doesn't exist yet - try to auto-create from Azure headers
-        # Parse the X-MS-CLIENT-PRINCIPAL header to get email
-        email = None
-        display_name = x_ms_client_principal_name
-
-        if x_ms_client_principal:
-            try:
-                # The header is base64 encoded JSON
-                principal_data = json.loads(base64.b64decode(x_ms_client_principal))
-                claims = principal_data.get("claims", [])
-                for claim in claims:
-                    claim_type = claim.get("typ", "")
-                    if claim_type in ["http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress",
-                                      "emails", "email", "preferred_username"]:
-                        email = claim.get("val")
-                        break
-                    if claim_type == "name" and not display_name:
-                        display_name = claim.get("val")
-            except (ValueError, KeyError, json.JSONDecodeError):
-                pass
-
-        # If we couldn't get email from claims, try using the principal name
-        if not email and x_ms_client_principal_name and "@" in x_ms_client_principal_name:
-            email = x_ms_client_principal_name
-
-        if not email:
-            # Can't create user without email
-            return None
-
-        # Check if email is allowed
-        if not is_email_allowed(db, email):
-            return None  # Email not in allowlist
-
-        # Check if this is the first user (make them admin)
-        is_first_user = db.query(User).count() == 0
-
-        # Generate a unique username from email
-        base_username = email.split("@")[0]
-        username = base_username
-        counter = 1
-        while db.query(User).filter(User.username == username).first():
-            username = f"{base_username}{counter}"
-            counter += 1
-
-        # Check if a user with this email already exists (link accounts)
-        existing_user = db.query(User).filter(User.email == email).first()
-        if existing_user:
-            # Link existing account to Azure
-            existing_user.oauth_provider = "azure"
-            existing_user.oauth_id = x_ms_client_principal_id
-            existing_user.last_login = datetime.utcnow()
+            # Create new user
+            user = User(
+                email=email,
+                username=username,
+                display_name=display_name or username,
+                password_hash=None,  # Azure OAuth users don't have passwords
+                role=UserRole.ADMIN if is_first_user else UserRole.USER,
+                is_active=True,
+                oauth_provider="azure",
+                oauth_id=x_ms_client_principal_id,
+                last_login=datetime.utcnow()
+            )
+            db.add(user)
             db.commit()
-            return existing_user if existing_user.is_active else None
+            db.refresh(user)
+            return user
 
-        # Create new user
-        user = User(
-            email=email,
-            username=username,
-            display_name=display_name or username,
-            password_hash=None,  # Azure OAuth users don't have passwords
-            role=UserRole.ADMIN if is_first_user else UserRole.USER,
-            is_active=True,
-            oauth_provider="azure",
-            oauth_id=x_ms_client_principal_id,
-            last_login=datetime.utcnow()
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-        return user
-
-    return None
+        return None
+    except Exception as e:
+        # Log the error but don't fail - return None for anonymous access
+        print(f"Error in get_current_user: {e}")
+        return None
 
 
 async def get_current_user_required(
