@@ -26,10 +26,10 @@ COPY backend/app/ ./app/
 # Copy built frontend
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
-# Create data directory for SQLite
-RUN mkdir -p /data
+# Create data directory for SQLite (inside app dir for local storage)
+RUN mkdir -p /app/data
 
-ENV DATABASE_URL=sqlite:////data/bibmap.db
+ENV DATABASE_URL=sqlite:////app/data/bibmap.db
 ENV PORT=8000
 
 EXPOSE 8000

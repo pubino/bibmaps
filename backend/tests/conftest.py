@@ -6,6 +6,8 @@ from sqlalchemy.pool import StaticPool
 
 from app.main import app
 from app.database import Base, get_db
+from app.models.models import User, UserRole
+from app.auth import get_password_hash
 
 
 @pytest.fixture(scope="function")
@@ -56,16 +58,41 @@ def _login_and_get_headers(client: TestClient, username: str, password: str) -> 
     return {"Authorization": f"Bearer {token}"}
 
 
+def _create_user_in_db(db: Session, email: str, username: str, display_name: str,
+                       password: str, role: UserRole = UserRole.USER) -> dict:
+    """Create a user directly in the database."""
+    user = User(
+        email=email,
+        username=username,
+        display_name=display_name,
+        password_hash=get_password_hash(password),
+        role=role,
+        is_active=True
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return {
+        "id": user.id,
+        "email": user.email,
+        "username": user.username,
+        "display_name": user.display_name,
+        "role": user.role.value,
+        "is_active": user.is_active
+    }
+
+
 @pytest.fixture
-def admin_user(client: TestClient):
-    """Create an admin user (first user is always admin)."""
-    response = client.post("/api/auth/register", json={
-        "email": "admin@example.com",
-        "username": "admin",
-        "display_name": "Admin User",
-        "password": "adminpass123"
-    })
-    return response.json()
+def admin_user(db: Session):
+    """Create an admin user directly in the database."""
+    return _create_user_in_db(
+        db,
+        email="admin@example.com",
+        username="admin",
+        display_name="Admin User",
+        password="adminpass123",
+        role=UserRole.ADMIN
+    )
 
 
 @pytest.fixture
@@ -81,15 +108,16 @@ def admin_client(client: TestClient, admin_headers) -> TestClient:
 
 
 @pytest.fixture
-def standard_user(client: TestClient, admin_user):
-    """Create a standard user (second user is standard)."""
-    response = client.post("/api/auth/register", json={
-        "email": "user@example.com",
-        "username": "testuser",
-        "display_name": "Test User",
-        "password": "userpass123"
-    })
-    return response.json()
+def standard_user(db: Session, admin_user):
+    """Create a standard user directly in the database."""
+    return _create_user_in_db(
+        db,
+        email="user@example.com",
+        username="testuser",
+        display_name="Test User",
+        password="userpass123",
+        role=UserRole.USER
+    )
 
 
 @pytest.fixture

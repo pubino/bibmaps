@@ -1,0 +1,16 @@
+properties:
+  template:
+    containers:
+      - name: bibmaps
+        image: bibmapsacr.azurecr.io/bibmaps:latest
+        resources:
+          cpu: 0.5
+          memory: 1Gi
+        env:
+          - name: SECRET_KEY
+            value: dbb9a0ee26c3b0d0cdf36a8c3b276f708a98dbf6f2ccf43ef72cf18949588deb
+          - name: AZURE_EASY_AUTH_ENABLED
+            value: "true"
+          - name: DATABASE_URL
+            value: sqlite:////app/data/bibmap.db
+    volumes: []
