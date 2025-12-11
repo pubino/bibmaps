@@ -220,52 +220,101 @@ async function loadUserInfo() {
 function updateAuthUI() {
   const userInfo = document.getElementById('user-info');
   const authToggleBtn = document.getElementById('auth-toggle-btn');
-  const registerBtn = document.getElementById('register-btn');
   const profileBtn = document.getElementById('profile-btn');
   const adminNav = document.getElementById('nav-admin');
   const settingsNav = document.getElementById('nav-settings');
 
   if (currentUser) {
     userInfo.textContent = `Signed in as ${currentUser.user_name || currentUser.username || 'User'}`;
-    authToggleBtn.textContent = 'Logout';
+    authToggleBtn.textContent = 'Sign Out';
     authToggleBtn.classList.remove('btn-secondary');
     authToggleBtn.classList.add('btn-primary');
-    // Hide Register when logged in - Login/Logout is a toggle
-    registerBtn.hidden = true;
     profileBtn.hidden = false;
     settingsNav.hidden = false;
 
     // Show admin nav if user is admin
-    if (currentUser.is_admin) {
-      adminNav.hidden = false;
-    } else {
-      adminNav.hidden = true;
-    }
+    adminNav.hidden = !currentUser.is_admin;
   } else {
-    userInfo.textContent = 'Not signed in (local mode)';
-    authToggleBtn.textContent = 'Login';
+    // Show appropriate message based on auth mode
+    if (authMethods.azure_easy_auth) {
+      userInfo.textContent = 'Not signed in';
+      authToggleBtn.textContent = 'Sign In';
+    } else {
+      userInfo.textContent = 'Not signed in';
+      authToggleBtn.textContent = 'Sign In';
+    }
     authToggleBtn.classList.remove('btn-primary');
     authToggleBtn.classList.add('btn-secondary');
-    // Keep Register hidden - users access registration through the Login modal
-    // This makes Login/Logout a true toggle button
-    registerBtn.hidden = true;
     profileBtn.hidden = true;
     adminNav.hidden = true;
     settingsNav.hidden = true;
   }
 }
 
-// Google OAuth state
+// Auth methods state
+let authMethods = {
+  azure_easy_auth: false,
+  azure_login_url: '/.auth/login/aad?post_login_redirect_uri=/',
+  local_login: true,
+  google_oauth: false,
+  registration_enabled: false
+};
+
+// Check available auth methods
+async function checkAuthMethods() {
+  try {
+    authMethods = await api.auth.authMethods();
+
+    // Update UI based on available auth methods
+    const loginGoogleSection = document.getElementById('login-google-section');
+    const loginFormFields = document.querySelectorAll('#login-form .form-group');
+    const loginFormSubmit = document.querySelector('#login-form .form-actions');
+    const azureLoginSection = document.getElementById('login-azure-section');
+    const loginModalFooter = document.querySelector('#login-form .modal-footer-text');
+
+    // Show/hide Google OAuth
+    if (loginGoogleSection) {
+      loginGoogleSection.hidden = !authMethods.google_oauth;
+    }
+
+    // Show/hide Azure login button
+    if (azureLoginSection) {
+      azureLoginSection.hidden = !authMethods.azure_easy_auth;
+    }
+
+    // Hide local login form fields when local login is disabled (Azure mode)
+    if (!authMethods.local_login) {
+      // Hide username/password fields and submit button
+      loginFormFields.forEach(field => field.hidden = true);
+      if (loginFormSubmit) loginFormSubmit.hidden = true;
+      // Update footer text for Azure mode
+      if (loginModalFooter) {
+        loginModalFooter.textContent = 'Sign in with your Microsoft account to continue.';
+      }
+      // Hide the "or" divider if Azure is the only option
+      const oauthDivider = document.querySelector('#login-azure-section .oauth-divider');
+      if (oauthDivider) oauthDivider.hidden = true;
+    }
+
+    // If Azure Easy Auth is available, log it
+    if (authMethods.azure_easy_auth) {
+      console.log('Azure Easy Auth available at:', authMethods.azure_login_url);
+    }
+  } catch (err) {
+    console.error('Failed to check auth methods:', err);
+  }
+}
+
+// Legacy: Google OAuth state (kept for compatibility)
 let googleOAuthEnabled = false;
 
-// Check if Google OAuth is available
+// Check if Google OAuth is available (legacy, now part of checkAuthMethods)
 async function checkGoogleOAuth() {
   try {
     const result = await api.auth.googleEnabled();
     googleOAuthEnabled = result.enabled;
     // Show/hide Google OAuth buttons
     document.getElementById('login-google-section').hidden = !googleOAuthEnabled;
-    document.getElementById('register-google-section').hidden = !googleOAuthEnabled;
   } catch (err) {
     console.log('Google OAuth not available');
     googleOAuthEnabled = false;
@@ -307,12 +356,6 @@ function showLoginModal() {
   openModal('login-modal');
 }
 
-function showRegisterModal() {
-  document.getElementById('register-error').hidden = true;
-  document.getElementById('register-form').reset();
-  openModal('register-modal');
-}
-
 function showProfileModal() {
   if (!currentUser) return;
   document.getElementById('profile-error').hidden = true;
@@ -340,43 +383,6 @@ async function handleLogin(e) {
     await loadReferences();
     await loadTaxonomies();
     announce('Logged in successfully');
-  } catch (err) {
-    errorEl.textContent = err.message;
-    errorEl.hidden = false;
-  }
-}
-
-async function handleRegister(e) {
-  e.preventDefault();
-  const email = document.getElementById('register-email').value;
-  const username = document.getElementById('register-username').value;
-  const displayName = document.getElementById('register-display-name').value;
-  const password = document.getElementById('register-password').value;
-  const confirmPassword = document.getElementById('register-confirm-password').value;
-  const errorEl = document.getElementById('register-error');
-
-  if (password !== confirmPassword) {
-    errorEl.textContent = 'Passwords do not match';
-    errorEl.hidden = false;
-    return;
-  }
-
-  try {
-    await api.auth.register({
-      email,
-      username,
-      display_name: displayName || username,
-      password
-    });
-    // Auto-login after registration
-    await api.auth.login(username, password);
-    closeModal();
-    await loadUserInfo();
-    await loadSettings();
-    await loadBibMaps();
-    await loadReferences();
-    await loadTaxonomies();
-    announce('Account created and logged in');
   } catch (err) {
     errorEl.textContent = err.message;
     errorEl.hidden = false;
@@ -435,6 +441,81 @@ async function handlePasswordChange(e) {
     announce('Password changed successfully');
   } catch (err) {
     errorEl.textContent = err.message;
+    errorEl.hidden = false;
+  }
+}
+
+// Admin: Allowed emails management
+let allAllowedEmails = [];
+
+async function loadAllowedEmails() {
+  try {
+    allAllowedEmails = await api.auth.listAllowedEmails();
+    renderAllowedEmailsList();
+  } catch (err) {
+    announce(`Error loading allowed emails: ${err.message}`);
+  }
+}
+
+function renderAllowedEmailsList() {
+  const container = document.getElementById('allowed-emails-list');
+  if (!container) return;
+
+  if (allAllowedEmails.length === 0) {
+    container.innerHTML = '<p class="allowed-emails-empty">No email restrictions configured. Anyone with a Microsoft account can sign in.</p>';
+    return;
+  }
+
+  container.innerHTML = allAllowedEmails.map(entry => `
+    <div class="allowed-email-item" data-id="${entry.id}">
+      <div class="allowed-email-info">
+        <span class="allowed-email-pattern">${escapeHtml(entry.email_pattern)}</span>
+        ${entry.description ? `<span class="allowed-email-description">${escapeHtml(entry.description)}</span>` : ''}
+      </div>
+      <button class="btn-danger delete-allowed-email-btn" title="Remove">Delete</button>
+    </div>
+  `).join('');
+
+  // Add delete event listeners
+  container.querySelectorAll('.delete-allowed-email-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const id = e.target.closest('.allowed-email-item').dataset.id;
+      const entry = allAllowedEmails.find(e => e.id === parseInt(id));
+      if (entry && await showConfirm(`Remove "${entry.email_pattern}" from allowed list?`)) {
+        try {
+          await api.auth.deleteAllowedEmail(id);
+          await loadAllowedEmails();
+          announce('Email removed from allowed list');
+        } catch (err) {
+          announce(`Error removing email: ${err.message}`);
+        }
+      }
+    });
+  });
+}
+
+function openAddAllowedEmailModal() {
+  document.getElementById('allowed-email-form').reset();
+  document.getElementById('allowed-email-error').hidden = true;
+  openModal('allowed-email-modal');
+}
+
+async function handleAddAllowedEmail(e) {
+  e.preventDefault();
+  const pattern = document.getElementById('allowed-email-pattern').value.trim();
+  const description = document.getElementById('allowed-email-description').value.trim();
+  const errorEl = document.getElementById('allowed-email-error');
+
+  try {
+    await api.auth.addAllowedEmail({
+      email_pattern: pattern,
+      description: description || null
+    });
+    closeModal('allowed-email-modal');
+    await loadAllowedEmails();
+    announce('Email added to allowed list');
+  } catch (err) {
+    errorEl.textContent = err.message || 'Failed to add email';
     errorEl.hidden = false;
   }
 }
@@ -2404,6 +2485,7 @@ function setupEventListeners() {
 
   navButtons.admin.addEventListener('click', () => {
     showSection('admin');
+    loadAllowedEmails();
     loadUsers();
   });
 
@@ -2419,36 +2501,29 @@ function setupEventListeners() {
       showLoginModal();
     }
   });
-  document.getElementById('register-btn').addEventListener('click', showRegisterModal);
   document.getElementById('profile-btn').addEventListener('click', showProfileModal);
 
   // Auth forms
   document.getElementById('login-form').addEventListener('submit', handleLogin);
-  document.getElementById('register-form').addEventListener('submit', handleRegister);
   document.getElementById('profile-form').addEventListener('submit', handleProfileUpdate);
   document.getElementById('change-password-form').addEventListener('submit', handlePasswordChange);
 
-  // Switch between login/register
-  document.getElementById('switch-to-register').addEventListener('click', (e) => {
-    e.preventDefault();
-    closeModal();
-    showRegisterModal();
-  });
-  document.getElementById('switch-to-login').addEventListener('click', (e) => {
-    e.preventDefault();
-    closeModal();
-    showLoginModal();
+  // Azure OAuth button
+  document.getElementById('azure-login-btn')?.addEventListener('click', () => {
+    // Redirect to Azure Easy Auth login
+    window.location.href = authMethods.azure_login_url || '/.auth/login/aad?post_login_redirect_uri=/';
   });
 
-  // Google OAuth buttons
-  document.getElementById('google-login-btn').addEventListener('click', () => {
-    api.auth.googleLogin();
-  });
-  document.getElementById('google-register-btn').addEventListener('click', () => {
+  // Google OAuth button
+  document.getElementById('google-login-btn')?.addEventListener('click', () => {
     api.auth.googleLogin();
   });
 
-  // Admin user management
+  // Admin: Allowed emails
+  document.getElementById('add-allowed-email')?.addEventListener('click', openAddAllowedEmailModal);
+  document.getElementById('allowed-email-form')?.addEventListener('submit', handleAddAllowedEmail);
+
+  // Admin: User management
   document.getElementById('create-user')?.addEventListener('click', openCreateUserModal);
   document.getElementById('user-form').addEventListener('submit', handleUserFormSubmit);
   document.getElementById('user-search')?.addEventListener('input', debounce(() => loadUsers(), 300));
@@ -3508,6 +3583,7 @@ async function init() {
     setupTagInput('node');
     setupTagInput('media');
     handleOAuthErrors();
+    await checkAuthMethods();
     await checkGoogleOAuth();
     await loadUserInfo();
     await loadSettings();

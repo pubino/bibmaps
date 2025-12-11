@@ -97,7 +97,16 @@ export const api = {
     googleLogin: () => {
       // Redirect to Google OAuth login endpoint
       window.location.href = `${API_BASE}/auth/google/login`;
-    }
+    },
+    // Allowed Emails (admin)
+    listAllowedEmails: () => request('/auth/allowed-emails'),
+    addAllowedEmail: (data) => request('/auth/allowed-emails', { method: 'POST', body: JSON.stringify(data) }),
+    deleteAllowedEmail: (id) => request(`/auth/allowed-emails/${id}`, { method: 'DELETE' }),
+    checkEmailAllowed: (email) => request(`/auth/allowed-emails/check?email=${encodeURIComponent(email)}`),
+    // Registration check
+    registrationEnabled: () => request('/auth/registration-enabled'),
+    // Auth methods available
+    authMethods: () => request('/auth/auth-methods')
   },
 
   // BibMaps

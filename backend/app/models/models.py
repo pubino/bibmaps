@@ -39,6 +39,19 @@ class User(Base):
     media = relationship("Media", back_populates="owner", cascade="all, delete-orphan")
 
 
+class AllowedEmail(Base):
+    """Allowlist of email addresses/patterns permitted to use the app."""
+    __tablename__ = "allowed_emails"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email_pattern = Column(String(255), unique=True, nullable=False, index=True)
+    description = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    created_by = relationship("User", foreign_keys=[created_by_id])
+
+
 class UserSettings(Base):
     """User settings and preferences."""
     __tablename__ = "user_settings"

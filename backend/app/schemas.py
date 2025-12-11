@@ -410,3 +410,22 @@ class ReferenceWithMatch(Reference):
 
 class MediaWithMatch(Media):
     match_reasons: List[MatchReason] = []
+
+
+# Allowed Email Schemas
+class AllowedEmailBase(BaseModel):
+    email_pattern: str
+    description: Optional[str] = None
+
+
+class AllowedEmailCreate(AllowedEmailBase):
+    pass
+
+
+class AllowedEmailResponse(AllowedEmailBase):
+    id: int
+    created_at: datetime
+    created_by_id: Optional[int] = None
+
+    class Config:
+        from_attributes = True

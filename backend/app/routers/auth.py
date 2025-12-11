@@ -50,18 +50,21 @@ def get_auth_methods(request: Request):
 
     Returns info about what auth methods are available:
     - azure_easy_auth: True if running behind Azure Container Apps with Easy Auth
-    - local_login: True if username/password login is available
+    - local_login: True if username/password login is available (disabled in Azure mode)
     - google_oauth: True if Google OAuth is configured
     """
     # Check if Azure Easy Auth is enabled via environment variable
     # This is set by the deployment script when Easy Auth is configured
     azure_easy_auth = os.getenv("AZURE_EASY_AUTH_ENABLED", "").lower() == "true"
 
+    # In Azure Easy Auth mode, disable local login to enforce SSO
+    local_login = not azure_easy_auth
+
     return {
         "azure_easy_auth": azure_easy_auth,
         "azure_login_url": "/.auth/login/aad?post_login_redirect_uri=/",
-        "local_login": True,  # Always available as fallback for admin-created users
-        "google_oauth": bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET),
+        "local_login": local_login,
+        "google_oauth": bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET) and not azure_easy_auth,
         "registration_enabled": False
     }
 

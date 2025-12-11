@@ -311,6 +311,25 @@ main {
   flex-shrink: 0;
 }
 
+.btn-azure {
+  background: #fff;
+  color: #5e5e5e;
+  border: 1px solid #8c8c8c;
+}
+
+.btn-azure:hover {
+  background: #f5f5f5;
+  border-color: #5e5e5e;
+}
+
+.btn-azure:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+.btn-azure .microsoft-icon {
+  flex-shrink: 0;
+}
+
 /* Connection popover */
 .connection-popover {
   position: absolute;
@@ -1918,6 +1937,82 @@ main {
 
 .text-danger {
   color: var(--danger);
+}
+
+/* Admin section styles */
+.admin-subsection {
+  margin-bottom: 2rem;
+}
+
+.admin-divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 2rem 0;
+}
+
+.help-text {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  margin: 0.5rem 0 1rem 0;
+}
+
+.help-text-small {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  margin: 0.25rem 0 0 0;
+}
+
+/* Allowed emails list */
+.allowed-emails-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.allowed-email-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+}
+
+.allowed-email-item:hover {
+  border-color: var(--secondary);
+}
+
+.allowed-email-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.allowed-email-pattern {
+  font-weight: 500;
+  font-family: monospace;
+  font-size: 0.95rem;
+}
+
+.allowed-email-description {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.allowed-email-item .btn-danger {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+}
+
+.allowed-emails-empty {
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 1rem;
+  text-align: center;
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: 0.5rem;
 }
 
 /* Profile modal divider */
