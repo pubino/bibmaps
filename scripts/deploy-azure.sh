@@ -29,6 +29,8 @@ DEFAULT_ACR_NAME="bibmapsacr"
 DEFAULT_CAE_NAME="bibmaps-env"
 DEFAULT_APP_NAME="bibmaps"
 DEFAULT_IMAGE_TAG="latest"
+DEFAULT_SQL_SERVER_SUFFIX="sql"
+DEFAULT_SQL_DB_NAME="bibmapsdb"
 
 # Color output
 RED='\033[0;31m'
@@ -302,6 +304,84 @@ if az containerapp show --name "$APP_NAME" --resource-group "$RESOURCE_GROUP" &>
     fi
 fi
 
+# Database Configuration (only for new deployments or if not in update mode)
+DATABASE_TYPE="ephemeral"
+SQL_SERVER_NAME=""
+SQL_DB_NAME=""
+SQL_ADMIN_USER=""
+SQL_ADMIN_PASSWORD=""
+DATABASE_URL=""
+
+if [ "$UPDATE_MODE" = false ] && [ "$DRY_RUN" = false ]; then
+    echo ""
+    echo "========================================="
+    echo "  Database Configuration"
+    echo "========================================="
+    echo ""
+    echo "Choose how to store your data:"
+    echo ""
+    echo "  1) Ephemeral SQLite (default)"
+    echo "     - Free, no additional resources"
+    echo "     - Data is lost when container restarts"
+    echo "     - Good for demos and testing"
+    echo ""
+    echo "  2) Azure SQL Database"
+    echo "     - Persistent, managed database"
+    echo "     - ~\$5-15/month (Basic tier)"
+    echo "     - Recommended for production"
+    echo ""
+    read -p "Select database option [1-2, default=1]: " DB_CHOICE
+
+    case "$DB_CHOICE" in
+        2)
+            DATABASE_TYPE="azure-sql"
+            echo ""
+            echo -e "${BLUE}Azure SQL Database selected.${NC}"
+
+            # Generate server name based on app name
+            SQL_SERVER_NAME="${APP_NAME}-${DEFAULT_SQL_SERVER_SUFFIX}"
+            SQL_DB_NAME="$DEFAULT_SQL_DB_NAME"
+
+            read -p "SQL Server name [$SQL_SERVER_NAME]: " INPUT_SQL_SERVER
+            SQL_SERVER_NAME=${INPUT_SQL_SERVER:-$SQL_SERVER_NAME}
+
+            read -p "Database name [$SQL_DB_NAME]: " INPUT_SQL_DB
+            SQL_DB_NAME=${INPUT_SQL_DB:-$SQL_DB_NAME}
+
+            # Check if SQL server already exists
+            if az sql server show --name "$SQL_SERVER_NAME" --resource-group "$RESOURCE_GROUP" &>/dev/null 2>&1; then
+                echo -e "${BLUE}SQL Server '$SQL_SERVER_NAME' already exists.${NC}"
+                read -p "SQL admin username: " SQL_ADMIN_USER
+                read -s -p "SQL admin password: " SQL_ADMIN_PASSWORD
+                echo ""
+            else
+                echo ""
+                echo "Setting up new SQL Server credentials..."
+                read -p "SQL admin username [bibmapsadmin]: " SQL_ADMIN_USER
+                SQL_ADMIN_USER=${SQL_ADMIN_USER:-bibmapsadmin}
+
+                # Generate a secure password if not provided
+                echo "Enter a password or press Enter to generate one."
+                echo "(Must be 8+ chars with uppercase, lowercase, number, and special char)"
+                read -s -p "SQL admin password: " SQL_ADMIN_PASSWORD
+                echo ""
+
+                if [ -z "$SQL_ADMIN_PASSWORD" ]; then
+                    SQL_ADMIN_PASSWORD=$(openssl rand -base64 16 | tr -dc 'A-Za-z0-9' | head -c 12)
+                    SQL_ADMIN_PASSWORD="${SQL_ADMIN_PASSWORD}Aa1!"
+                    echo -e "${YELLOW}Generated password: $SQL_ADMIN_PASSWORD${NC}"
+                    echo -e "${YELLOW}Please save this password!${NC}"
+                fi
+            fi
+            ;;
+        *)
+            DATABASE_TYPE="ephemeral"
+            echo ""
+            echo -e "${YELLOW}Ephemeral SQLite selected. Data will not persist across restarts.${NC}"
+            ;;
+    esac
+fi
+
 # Entra ID Configuration (only for new deployments or if not in update mode)
 CONFIGURE_ENTRA=false
 ENTRA_APP_ID=""
@@ -364,6 +444,14 @@ if [ "$UPDATE_MODE" = true ]; then
     echo -e "Mode:                      ${BLUE}Update existing deployment${NC}"
 else
     echo -e "Mode:                      ${GREEN}New deployment${NC}"
+fi
+if [ "$DATABASE_TYPE" = "azure-sql" ]; then
+    echo -e "Database:                  ${GREEN}Azure SQL Database${NC}"
+    echo "  SQL Server:              $SQL_SERVER_NAME"
+    echo "  Database:                $SQL_DB_NAME"
+    echo "  Admin User:              $SQL_ADMIN_USER"
+else
+    echo -e "Database:                  ${YELLOW}Ephemeral SQLite (data not persisted)${NC}"
 fi
 if [ "$CONFIGURE_ENTRA" = true ]; then
     if [ -n "$ENTRA_APP_ID" ]; then
@@ -476,6 +564,11 @@ REQUIRED_PROVIDERS=(
     "Microsoft.OperationalInsights"
 )
 
+# Add SQL provider if Azure SQL is selected
+if [ "$DATABASE_TYPE" = "azure-sql" ]; then
+    REQUIRED_PROVIDERS+=("Microsoft.Sql")
+fi
+
 for PROVIDER in "${REQUIRED_PROVIDERS[@]}"; do
     STATE=$(az provider show --namespace "$PROVIDER" --query "registrationState" --output tsv 2>/dev/null || echo "NotRegistered")
 
@@ -526,7 +619,7 @@ echo "========================================="
 
 # Create Resource Group
 echo ""
-echo "[1/8] Creating Resource Group..."
+echo "[1/9] Creating Resource Group..."
 if az group show --name "$RESOURCE_GROUP" &>/dev/null; then
     echo "  Resource Group '$RESOURCE_GROUP' already exists."
 else
@@ -536,7 +629,7 @@ fi
 
 # Create Container Registry
 echo ""
-echo "[2/8] Creating Container Registry..."
+echo "[2/9] Creating Container Registry..."
 if az acr show --name "$ACR_NAME" --resource-group "$RESOURCE_GROUP" &>/dev/null; then
     echo "  Container Registry '$ACR_NAME' already exists."
 else
@@ -546,7 +639,7 @@ fi
 
 # Get ACR credentials
 echo ""
-echo "[3/8] Getting Container Registry credentials..."
+echo "[3/9] Getting Container Registry credentials..."
 ACR_LOGIN_SERVER=$(az acr show --name "$ACR_NAME" --resource-group "$RESOURCE_GROUP" --query loginServer --output tsv)
 ACR_USERNAME=$(az acr credential show --name "$ACR_NAME" --resource-group "$RESOURCE_GROUP" --query username --output tsv)
 ACR_PASSWORD=$(az acr credential show --name "$ACR_NAME" --resource-group "$RESOURCE_GROUP" --query "passwords[0].value" --output tsv)
@@ -554,7 +647,7 @@ echo "  ACR Login Server: $ACR_LOGIN_SERVER"
 
 # Build and push image
 echo ""
-echo "[4/8] Building and pushing Docker image..."
+echo "[4/9] Building and pushing Docker image..."
 IMAGE_NAME="$ACR_LOGIN_SERVER/bibmaps:$IMAGE_TAG"
 
 # Get script directory and project root
@@ -578,7 +671,7 @@ echo -e "  ${GREEN}Image built and pushed: $IMAGE_NAME${NC}"
 
 # Create Container App Environment
 echo ""
-echo "[5/8] Creating Container App Environment..."
+echo "[5/9] Creating Container App Environment..."
 if az containerapp env show --name "$CAE_NAME" --resource-group "$RESOURCE_GROUP" &>/dev/null; then
     echo "  Container App Environment '$CAE_NAME' already exists."
 else
@@ -590,9 +683,68 @@ else
     echo -e "  ${GREEN}Container App Environment '$CAE_NAME' created.${NC}"
 fi
 
+# Create Azure SQL Database if selected
+echo ""
+echo "[6/9] Configuring Database..."
+if [ "$DATABASE_TYPE" = "azure-sql" ]; then
+    echo "  Setting up Azure SQL Database..."
+
+    # Create SQL Server if it doesn't exist
+    if az sql server show --name "$SQL_SERVER_NAME" --resource-group "$RESOURCE_GROUP" &>/dev/null 2>&1; then
+        echo "  SQL Server '$SQL_SERVER_NAME' already exists."
+    else
+        echo "  Creating SQL Server '$SQL_SERVER_NAME'..."
+        az sql server create \
+            --name "$SQL_SERVER_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --location "$LOCATION" \
+            --admin-user "$SQL_ADMIN_USER" \
+            --admin-password "$SQL_ADMIN_PASSWORD" \
+            --output none
+        echo -e "  ${GREEN}SQL Server created.${NC}"
+    fi
+
+    # Create database if it doesn't exist
+    if az sql db show --name "$SQL_DB_NAME" --server "$SQL_SERVER_NAME" --resource-group "$RESOURCE_GROUP" &>/dev/null 2>&1; then
+        echo "  Database '$SQL_DB_NAME' already exists."
+    else
+        echo "  Creating database '$SQL_DB_NAME' (Basic tier)..."
+        az sql db create \
+            --resource-group "$RESOURCE_GROUP" \
+            --server "$SQL_SERVER_NAME" \
+            --name "$SQL_DB_NAME" \
+            --edition Basic \
+            --capacity 5 \
+            --max-size 2GB \
+            --output none
+        echo -e "  ${GREEN}Database created.${NC}"
+    fi
+
+    # Configure firewall to allow Azure services
+    echo "  Configuring firewall rules..."
+    az sql server firewall-rule create \
+        --resource-group "$RESOURCE_GROUP" \
+        --server "$SQL_SERVER_NAME" \
+        --name "AllowAzureServices" \
+        --start-ip-address 0.0.0.0 \
+        --end-ip-address 0.0.0.0 \
+        --output none 2>/dev/null || true
+    echo -e "  ${GREEN}Firewall configured.${NC}"
+
+    # Build the connection string
+    SQL_SERVER_FQDN="${SQL_SERVER_NAME}.database.windows.net"
+    # URL-encode the password
+    ENCODED_PASSWORD=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$SQL_ADMIN_PASSWORD', safe=''))")
+    DATABASE_URL="mssql+pyodbc://${SQL_ADMIN_USER}:${ENCODED_PASSWORD}@${SQL_SERVER_FQDN}/${SQL_DB_NAME}?driver=ODBC+Driver+18+for+SQL+Server&Encrypt=yes&TrustServerCertificate=no"
+
+    echo -e "  ${GREEN}Azure SQL Database configured.${NC}"
+else
+    echo "  Using ephemeral SQLite (data will not persist across restarts)"
+fi
+
 # Create or update Container App
 echo ""
-echo "[6/8] Deploying Container App..."
+echo "[7/9] Deploying Container App..."
 
 # Generate a secret key for JWT tokens
 SECRET_KEY=$(openssl rand -hex 32)
@@ -606,6 +758,13 @@ if az containerapp show --name "$APP_NAME" --resource-group "$RESOURCE_GROUP" &>
         --output none
 else
     echo "  Creating Container App '$APP_NAME'..."
+
+    # Build environment variables
+    ENV_VARS="SECRET_KEY=$SECRET_KEY"
+    if [ -n "$DATABASE_URL" ]; then
+        ENV_VARS="$ENV_VARS DATABASE_URL=$DATABASE_URL"
+    fi
+
     az containerapp create \
         --name "$APP_NAME" \
         --resource-group "$RESOURCE_GROUP" \
@@ -620,7 +779,7 @@ else
         --memory 1Gi \
         --min-replicas 0 \
         --max-replicas 3 \
-        --env-vars "SECRET_KEY=$SECRET_KEY" \
+        --env-vars $ENV_VARS \
         --output none
 fi
 
@@ -629,7 +788,7 @@ APP_URL=$(az containerapp show --name "$APP_NAME" --resource-group "$RESOURCE_GR
 
 # Configure Entra ID
 echo ""
-echo "[7/8] Configuring Entra ID Authentication..."
+echo "[8/9] Configuring Entra ID Authentication..."
 
 if [ "$CONFIGURE_ENTRA" = true ]; then
 
@@ -691,7 +850,7 @@ fi
 
 # Set AZURE_EASY_AUTH_ENABLED environment variable based on Entra ID configuration
 echo ""
-echo "[8/8] Configuring production environment..."
+echo "[9/9] Configuring production environment..."
 if [ "$ENTRA_CONFIGURED" = true ]; then
     echo "  Setting AZURE_EASY_AUTH_ENABLED=true for production security..."
     az containerapp update \
@@ -712,6 +871,24 @@ echo -e "${GREEN}=========================================${NC}"
 echo ""
 echo "Your BibMaps app is available at:"
 echo -e "  ${GREEN}https://$APP_URL${NC}"
+echo ""
+
+# Database info
+if [ "$DATABASE_TYPE" = "azure-sql" ]; then
+    echo -e "${GREEN}Database:${NC}"
+    echo "  Type:     Azure SQL Database"
+    echo "  Server:   ${SQL_SERVER_NAME}.database.windows.net"
+    echo "  Database: $SQL_DB_NAME"
+    echo "  User:     $SQL_ADMIN_USER"
+    echo ""
+    echo -e "  ${YELLOW}IMPORTANT: Save your database credentials!${NC}"
+    echo -e "  ${YELLOW}Password:  $SQL_ADMIN_PASSWORD${NC}"
+else
+    echo -e "${YELLOW}Database:${NC}"
+    echo "  Type: Ephemeral SQLite"
+    echo "  Data will be lost when the container restarts."
+    echo "  To use persistent storage, re-deploy with Azure SQL option."
+fi
 echo ""
 
 if [ "$ENTRA_CONFIGURED" = true ]; then
